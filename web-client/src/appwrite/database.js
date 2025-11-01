@@ -7,6 +7,7 @@ export const databaseId = import.meta.env.VITE_APPWRITE_DB_ID || "";
 export const projectsCollectionId =
   import.meta.env.VITE_APPWRITE_PROJECTS_COLLECTION_ID || "";
 
+console.debug("DB", databaseId, "COLL", projectsCollectionId);
 function ensureIds() {
   if (!databaseId || !projectsCollectionId) {
     console.warn(
@@ -39,7 +40,12 @@ export async function createProject({
     managerId,
   };
   if (endDate) data.endDate = endDate;
-  return await databases.createDocument(databaseId, projectsCollectionId, ID.unique(), data);
+  return await databases.createDocument(
+    databaseId,
+    projectsCollectionId,
+    ID.unique(),
+    data
+  );
 }
 
 export async function deleteProject(id) {
