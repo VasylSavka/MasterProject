@@ -3,8 +3,10 @@ import {
   getProjects,
   createProject,
   deleteProject,
+  updateProject,
 } from "../appwrite/database";
 import { useAuth } from "../context/AuthContext";
+import TasksPanel from "../components/TasksPanel";
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -16,6 +18,7 @@ export default function Dashboard() {
     startDate: "",
     endDate: "",
   });
+  const [editingProject, setEditingProject] = useState(null);
 
   useEffect(() => {
     fetchProjects();
@@ -23,7 +26,7 @@ export default function Dashboard() {
 
   async function fetchProjects() {
     try {
-      const res = await getProjects();
+      const res = await getProjects(user.$id);
       setProjects(res.documents);
     } catch (err) {
       console.error("Помилка завантаження проєктів:", err);
@@ -46,7 +49,13 @@ export default function Dashboard() {
         managerId: user?.$id,
       };
       await createProject(payload);
-      setNewProject({ name: "", description: "", status: "active", startDate: "", endDate: "" });
+      setNewProject({
+        name: "",
+        description: "",
+        status: "active",
+        startDate: "",
+        endDate: "",
+      });
       fetchProjects();
     } catch (err) {
       alert("❌ Не вдалося створити проєкт: " + err.message);
@@ -57,6 +66,24 @@ export default function Dashboard() {
     if (!confirm("Видалити проєкт?")) return;
     await deleteProject(id);
     fetchProjects();
+  }
+
+  async function handleUpdate(e) {
+    e.preventDefault();
+    try {
+      await updateProject(editingProject.$id, {
+        name: editingProject.name,
+        description: editingProject.description,
+        status: editingProject.status,
+        endDate: editingProject.endDate
+          ? new Date(editingProject.endDate).toISOString()
+          : null,
+      });
+      setEditingProject(null);
+      fetchProjects();
+    } catch (err) {
+      alert("❌ Не вдалося оновити проєкт: " + err.message);
+    }
   }
 
   return (
@@ -71,6 +98,7 @@ export default function Dashboard() {
         </button>
       </div>
 
+      {/* Форма створення нового проєкту */}
       <form
         onSubmit={handleCreate}
         className="bg-white p-4 rounded-lg shadow mb-6"
@@ -100,7 +128,9 @@ export default function Dashboard() {
             <select
               className="border p-2 w-full rounded"
               value={newProject.status}
-              onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
+              onChange={(e) =>
+                setNewProject({ ...newProject, status: e.target.value })
+              }
               required
             >
               <option value="active">active</option>
@@ -114,7 +144,9 @@ export default function Dashboard() {
               type="datetime-local"
               className="border p-2 w-full rounded"
               value={newProject.startDate}
-              onChange={(e) => setNewProject({ ...newProject, startDate: e.target.value })}
+              onChange={(e) =>
+                setNewProject({ ...newProject, startDate: e.target.value })
+              }
               required
             />
           </div>
@@ -124,7 +156,9 @@ export default function Dashboard() {
               type="datetime-local"
               className="border p-2 w-full rounded"
               value={newProject.endDate}
-              onChange={(e) => setNewProject({ ...newProject, endDate: e.target.value })}
+              onChange={(e) =>
+                setNewProject({ ...newProject, endDate: e.target.value })
+              }
             />
           </div>
         </div>
@@ -133,25 +167,109 @@ export default function Dashboard() {
         </button>
       </form>
 
+      {/* Список проєктів */}
       <div className="grid gap-4">
         {projects.length > 0 ? (
-          projects.map((p) => (
-            <div
-              key={p.$id}
-              className="bg-white p-4 rounded-lg shadow flex justify-between items-center"
-            >
-              <div>
-                <h3 className="font-semibold text-lg">{p.name}</h3>
-                <p className="text-gray-600">{p.description}</p>
-              </div>
-              <button
-                onClick={() => handleDelete(p.$id)}
-                className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+          projects.map((p) =>
+            editingProject?.$id === p.$id ? (
+              <form
+                key={p.$id}
+                onSubmit={handleUpdate}
+                className="bg-yellow-50 p-4 rounded-lg shadow"
               >
-                Видалити
-              </button>
-            </div>
-          ))
+                <input
+                  value={editingProject.name}
+                  onChange={(e) =>
+                    setEditingProject({
+                      ...editingProject,
+                      name: e.target.value,
+                    })
+                  }
+                  className="border p-2 w-full mb-2 rounded"
+                />
+                <textarea
+                  value={editingProject.description}
+                  onChange={(e) =>
+                    setEditingProject({
+                      ...editingProject,
+                      description: e.target.value,
+                    })
+                  }
+                  className="border p-2 w-full mb-2 rounded"
+                />
+                <select
+                  value={editingProject.status}
+                  onChange={(e) =>
+                    setEditingProject({
+                      ...editingProject,
+                      status: e.target.value,
+                    })
+                  }
+                  className="border p-2 w-full mb-2 rounded"
+                >
+                  <option value="active">active</option>
+                  <option value="on_hold">on_hold</option>
+                  <option value="completed">completed</option>
+                </select>
+                <input
+                  type="datetime-local"
+                  value={
+                    editingProject.endDate
+                      ? editingProject.endDate.slice(0, 16)
+                      : ""
+                  }
+                  onChange={(e) =>
+                    setEditingProject({
+                      ...editingProject,
+                      endDate: e.target.value,
+                    })
+                  }
+                  className="border p-2 w-full mb-3 rounded"
+                />
+                <button className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 mr-2">
+                  Зберегти
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingProject(null)}
+                  className="bg-gray-400 text-white px-3 py-1 rounded hover:bg-gray-500"
+                >
+                  Скасувати
+                </button>
+              </form>
+            ) : (
+              <div key={p.$id}>
+              <div
+                className="bg-white p-4 rounded-lg shadow flex justify-between items-center"
+              >
+                <div>
+                  <h3 className="font-semibold text-lg">{p.name}</h3>
+                  <p className="text-gray-600">{p.description}</p>
+                  <p className="text-sm text-gray-400">
+                    Статус: {p.status} | Початок:{" "}
+                    {new Date(p.startDate).toLocaleDateString()} | Кінець:{" "}
+                    {p.endDate ? new Date(p.endDate).toLocaleDateString() : "—"}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditingProject(p)}
+                    className="bg-yellow-400 text-white px-3 py-1 rounded hover:bg-yellow-500"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => handleDelete(p.$id)}
+                    className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+              <TasksPanel projectId={p.$id} />
+              </div>
+            )
+          )
         ) : (
           <p className="text-gray-500 text-center">Немає створених проєктів</p>
         )}

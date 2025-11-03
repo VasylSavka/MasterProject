@@ -1,4 +1,4 @@
-import { Databases, ID } from "appwrite";
+import { Databases, ID, Query, Permission, Role } from "appwrite";
 import client from "./client";
 
 const databases = new Databases(client);
@@ -8,6 +8,7 @@ export const projectsCollectionId =
   import.meta.env.VITE_APPWRITE_PROJECTS_COLLECTION_ID || "";
 
 console.debug("DB", databaseId, "COLL", projectsCollectionId);
+
 function ensureIds() {
   if (!databaseId || !projectsCollectionId) {
     console.warn(
@@ -18,11 +19,15 @@ function ensureIds() {
   return true;
 }
 
-export async function getProjects() {
+// 🟩 Отримати лише проєкти поточного користувача
+export async function getProjects(managerId) {
   if (!ensureIds()) return { documents: [] };
-  return await databases.listDocuments(databaseId, projectsCollectionId);
+  return await databases.listDocuments(databaseId, projectsCollectionId, [
+    Query.equal("managerId", managerId),
+  ]);
 }
 
+// 🟩 Створити новий проєкт з дозволами (доступ лише власнику)
 export async function createProject({
   name,
   description,
@@ -32,6 +37,7 @@ export async function createProject({
   managerId,
 }) {
   if (!ensureIds()) return;
+
   const data = {
     name,
     description,
@@ -40,15 +46,35 @@ export async function createProject({
     managerId,
   };
   if (endDate) data.endDate = endDate;
+
+  // 🔐 Права доступу — лише власник (автор) може читати, змінювати, видаляти
+  const permissions = [
+    Permission.read(Role.user(managerId)),
+    Permission.update(Role.user(managerId)),
+    Permission.delete(Role.user(managerId)),
+  ];
+
   return await databases.createDocument(
     databaseId,
     projectsCollectionId,
     ID.unique(),
-    data
+    data,
+    permissions
   );
 }
 
+// 🟩 Видалення проєкту (лише якщо користувач має права)
 export async function deleteProject(id) {
   if (!ensureIds()) return;
   return await databases.deleteDocument(databaseId, projectsCollectionId, id);
+}
+
+export async function updateProject(id, data) {
+  if (!ensureIds()) return;
+  return await databases.updateDocument(
+    databaseId,
+    projectsCollectionId,
+    id,
+    data
+  );
 }
