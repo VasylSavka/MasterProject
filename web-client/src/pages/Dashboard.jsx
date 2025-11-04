@@ -7,6 +7,7 @@ import {
 } from "../appwrite/database";
 import { useAuth } from "../context/AuthContext";
 import TasksPanel from "../components/TasksPanel";
+import TeamPanel from "../components/TeamPanel";
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -239,34 +240,35 @@ export default function Dashboard() {
               </form>
             ) : (
               <div key={p.$id}>
-              <div
-                className="bg-white p-4 rounded-lg shadow flex justify-between items-center"
-              >
-                <div>
-                  <h3 className="font-semibold text-lg">{p.name}</h3>
-                  <p className="text-gray-600">{p.description}</p>
-                  <p className="text-sm text-gray-400">
-                    Статус: {p.status} | Початок:{" "}
-                    {new Date(p.startDate).toLocaleDateString()} | Кінець:{" "}
-                    {p.endDate ? new Date(p.endDate).toLocaleDateString() : "—"}
-                  </p>
+                <div className="bg-white p-4 rounded-lg shadow flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold text-lg">{p.name}</h3>
+                    <p className="text-gray-600">{p.description}</p>
+                    <p className="text-sm text-gray-400">
+                      Статус: {p.status} | Початок:{" "}
+                      {new Date(p.startDate).toLocaleDateString()} | Кінець:{" "}
+                      {p.endDate
+                        ? new Date(p.endDate).toLocaleDateString()
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditingProject(p)}
+                      className="bg-yellow-400 text-white px-3 py-1 rounded hover:bg-yellow-500"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => handleDelete(p.$id)}
+                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setEditingProject(p)}
-                    className="bg-yellow-400 text-white px-3 py-1 rounded hover:bg-yellow-500"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() => handleDelete(p.$id)}
-                    className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
-              <TasksPanel projectId={p.$id} />
+                <TasksPanel projectId={p.$id} />
+                <TeamPanel project={p} />
               </div>
             )
           )

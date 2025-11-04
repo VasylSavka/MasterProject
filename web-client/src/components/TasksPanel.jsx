@@ -7,7 +7,8 @@ import {
   updateTask,
   deleteTask,
 } from "../appwrite/tasks";
-import client from "../appwrite/client"; // ✅ імпорт для Realtime
+import client from "../appwrite/client";
+import toast from "react-hot-toast"; // ✅ новий імпорт
 
 export default function TasksPanel({ projectId }) {
   const { user } = useAuth();
@@ -20,7 +21,6 @@ export default function TasksPanel({ projectId }) {
     dueDate: "",
   });
   const [editingTask, setEditingTask] = useState(null);
-
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
   const [sortBy, setSortBy] = useState("created");
@@ -29,29 +29,27 @@ export default function TasksPanel({ projectId }) {
     if (projectId) {
       fetchTasks();
 
-      // ✅ Підписка на Realtime-оновлення документів
       const subscription = client.subscribe(
         `databases.${import.meta.env.VITE_APPWRITE_DB_ID}.collections.${import.meta.env.VITE_APPWRITE_TASKS_COLLECTION_ID}.documents`,
         (response) => {
           const event = response.events[0];
           const doc = response.payload;
-
-          // 🧭 Оновлення лише для завдань поточного проекту
           if (doc.projectId !== projectId) return;
 
           if (event.includes("create")) {
             setTasks((prev) => [doc, ...prev]);
+            toast.success(`🆕 Завдання "${doc.title}" створено`);
           } else if (event.includes("update")) {
             setTasks((prev) => prev.map((t) => (t.$id === doc.$id ? doc : t)));
+            toast.success(`✏️ Оновлено завдання "${doc.title}"`);
           } else if (event.includes("delete")) {
             setTasks((prev) => prev.filter((t) => t.$id !== doc.$id));
+            toast.error(`🗑️ Завдання видалено`);
           }
         }
       );
 
-      return () => {
-        subscription(); // 🧹 скасування підписки при демонтажі
-      };
+      return () => subscription();
     }
   }, [projectId]);
 
@@ -59,19 +57,29 @@ export default function TasksPanel({ projectId }) {
     try {
       const res = await getTasks(projectId);
       setTasks(res.documents);
-    } catch (err) {
-      console.error("Помилка отримання завдань:", err);
+    } catch {
+      toast.error("Помилка отримання завдань");
+      console.error("Помилка отримання завдань");
     }
   }
 
   async function handleCreate(e) {
     e.preventDefault();
+
+    const taskPromise = createTask({
+      ...newTask,
+      projectId,
+      assigneeId: user.$id,
+    });
+
+    toast.promise(taskPromise, {
+      loading: "⏳ Створення завдання...",
+      success: "✅ Завдання створено!",
+      error: "❌ Помилка створення завдання",
+    });
+
     try {
-      await createTask({
-        ...newTask,
-        projectId,
-        assigneeId: user.$id,
-      });
+      await taskPromise;
       setNewTask({
         title: "",
         description: "",
@@ -79,30 +87,30 @@ export default function TasksPanel({ projectId }) {
         priority: "medium",
         dueDate: "",
       });
-    } catch (err) {
-      alert("❌ Не вдалося створити завдання: " + err.message);
+    } catch {
+      toast.error("❌ Не вдалося створити завдання");
     }
   }
 
   async function handleUpdate(e) {
     e.preventDefault();
     try {
-      await updateTask(editingTask.$id, {
-        title: editingTask.title,
-        description: editingTask.description,
-        status: editingTask.status,
-        priority: editingTask.priority,
-        dueDate: editingTask.dueDate,
-      });
+      await updateTask(editingTask.$id, editingTask);
       setEditingTask(null);
-    } catch (err) {
-      alert("❌ Не вдалося оновити завдання: " + err.message);
+      toast.success("✅ Зміни збережено");
+    } catch {
+      toast.error("❌ Помилка оновлення завдання");
     }
   }
 
   async function handleDelete(id) {
     if (!confirm("Видалити завдання?")) return;
-    await deleteTask(id);
+    try {
+      await deleteTask(id);
+      toast.loading("🗑️ Видалення...");
+    } catch {
+      toast.error("❌ Помилка видалення завдання");
+    }
   }
 
   const filteredTasks = tasks
