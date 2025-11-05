@@ -1,6 +1,16 @@
 import { Teams, ID } from "appwrite";
 import client from "./client";
 
+// Centralize admin env and headers for DRY
+const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT;
+const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID;
+const apiKey = import.meta.env.VITE_APPWRITE_API_KEY;
+const adminHeaders = apiKey && projectId ? {
+  "Content-Type": "application/json",
+  "X-Appwrite-Project": projectId,
+  "X-Appwrite-Key": apiKey,
+} : null;
+
 const teams = new Teams(client);
 
 /** 🧱 Створення нової команди */
@@ -37,16 +47,12 @@ export async function getTeamMembers(teamId) {
 export async function inviteMember(teamId, email, roles = ["member"]) {
   try {
     const cleanEmail = email.trim();
-    const apiKey = import.meta.env.VITE_APPWRITE_API_KEY;
-    const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID;
+    if (!endpoint || !adminHeaders) {
+      throw new Error("Admin endpoint/headers are not configured");
+    }
 
     // 1️⃣ Отримуємо список користувачів (REST API)
-    const usersRes = await fetch("http://localhost/v1/users", {
-      headers: {
-        "X-Appwrite-Project": projectId,
-        "X-Appwrite-Key": apiKey,
-      },
-    });
+    const usersRes = await fetch(`${endpoint}/users`, { headers: adminHeaders });
 
     if (!usersRes.ok)
       throw new Error("Не вдалося отримати список користувачів");
@@ -67,14 +73,10 @@ export async function inviteMember(teamId, email, roles = ["member"]) {
       roles: roles,
     });
 
-    const res = await fetch(`http://localhost/v1/teams/${teamId}/memberships`, {
+    const res = await fetch(`${endpoint}/teams/${teamId}/memberships`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Appwrite-Project": projectId,
-        "X-Appwrite-Key": apiKey,
-      },
-      body: body,
+      headers: adminHeaders,
+      body,
     });
 
     const data = await res.json();
@@ -118,17 +120,9 @@ export async function confirmMembership(teamId, membershipId, userId, secret) {
 
 /** 👤 Отримати користувача за id (адмінний REST; потрібен API key з users.read) */
 export async function getUserById(userId) {
-  const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT;
-  const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID;
-  const apiKey = import.meta.env.VITE_APPWRITE_API_KEY;
   if (!endpoint || !projectId || !apiKey || !userId) return null;
   try {
-    const res = await fetch(`${endpoint}/users/${userId}`, {
-      headers: {
-        "X-Appwrite-Project": projectId,
-        "X-Appwrite-Key": apiKey,
-      },
-    });
+    const res = await fetch(`${endpoint}/users/${userId}`, { headers: adminHeaders });
     if (!res.ok) return null;
     return await res.json();
   } catch {

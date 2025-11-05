@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { createProject, getProjects, getProjectsByTeam } from "../appwrite/database";
+import toast from "react-hot-toast";
 import { listTeams } from "../appwrite/teams";
 
 export default function DashboardHome() {
@@ -58,7 +59,13 @@ export default function DashboardHome() {
       managerId: user?.$id,
     };
 
-    await createProject(payload);
+    const createPromise = createProject(payload);
+    toast.promise(createPromise, {
+      loading: "⏳ Створення проєкту...",
+      success: `✅ Проєкт "${payload.name}" створено`,
+      error: "❌ Не вдалося створити проєкт",
+    });
+    await createPromise;
     setNewProject({
       name: "",
       description: "",

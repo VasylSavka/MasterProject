@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import {
   getProjects,
   createProject,
@@ -49,7 +50,13 @@ export default function Dashboard() {
           : undefined,
         managerId: user?.$id,
       };
-      await createProject(payload);
+      const createPromise = createProject(payload);
+      toast.promise(createPromise, {
+        loading: "⏳ Створення проєкту...",
+        success: `✅ Проєкт "${payload.name}" створено`,
+        error: "❌ Не вдалося створити проєкт",
+      });
+      await createPromise;
       setNewProject({
         name: "",
         description: "",
@@ -59,7 +66,7 @@ export default function Dashboard() {
       });
       fetchProjects();
     } catch (err) {
-      alert("❌ Не вдалося створити проєкт: " + err.message);
+      // помилку вже показано в toast.promise; додаткових alert не потрібно
     }
   }
 

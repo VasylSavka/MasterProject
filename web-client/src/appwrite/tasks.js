@@ -1,30 +1,30 @@
-import { Databases, ID, Permission, Role, Query } from "appwrite";
-import client from "./client";
+// src/appwrite/tasks.js
+import { ID, Permission, Role, Query } from "appwrite";
+import { databases as db } from "./client";
+import { databaseId, tasksCollectionId } from "./database";
 
-const databases = new Databases(client);
-
-// Ідентифікатори з .env
-export const databaseId = import.meta.env.VITE_APPWRITE_DB_ID;
-export const tasksCollectionId = import.meta.env
-  .VITE_APPWRITE_TASKS_COLLECTION_ID;
-
-function ensureIds() {
+function ensure() {
   if (!databaseId || !tasksCollectionId) {
-    console.warn("Tasks: DB or Collection ID missing");
+    console.warn("Missing DB or Tasks Collection ID");
     return false;
   }
   return true;
 }
 
-// 🟩 Отримати завдання для конкретного проєкту
+/* =====================================================
+   GET TASKS FOR PROJECT
+===================================================== */
 export async function getTasks(projectId) {
-  if (!ensureIds()) return { documents: [] };
-  return await databases.listDocuments(databaseId, tasksCollectionId, [
+  if (!ensure() || !projectId) return { documents: [] };
+  return await db.listDocuments(databaseId, tasksCollectionId, [
     Query.equal("projectId", projectId),
+    Query.orderDesc("$createdAt"),
   ]);
 }
 
-// 🟩 Створити нове завдання
+/* =====================================================
+   CREATE TASK (with createdBy and permissions)
+===================================================== */
 export async function createTask({
   title,
   description,
@@ -33,26 +33,30 @@ export async function createTask({
   dueDate,
   projectId,
   assigneeId,
+  createdBy,
 }) {
-  if (!ensureIds()) return;
+  if (!ensure()) return;
 
   const data = {
     title,
     description,
     status,
     priority,
-    dueDate,
+    // Normalize empty string to null to avoid invalid datetime values
+    dueDate: dueDate || null,
     projectId,
     assigneeId,
+    createdBy,
   };
 
   const permissions = [
     Permission.read(Role.user(assigneeId)),
-    Permission.update(Role.user(assigneeId)),
-    Permission.delete(Role.user(assigneeId)),
+    Permission.read(Role.user(createdBy)),
+    Permission.update(Role.user(createdBy)),
+    Permission.delete(Role.user(createdBy)),
   ];
 
-  return await databases.createDocument(
+  return await db.createDocument(
     databaseId,
     tasksCollectionId,
     ID.unique(),
@@ -61,19 +65,38 @@ export async function createTask({
   );
 }
 
-// 🟩 Оновити завдання
-export async function updateTask(id, updates) {
-  if (!ensureIds()) return;
-  return await databases.updateDocument(
-    databaseId,
-    tasksCollectionId,
-    id,
-    updates
-  );
+/* =====================================================
+   UPDATE TASK (with updatedBy)
+===================================================== */
+export async function updateTask(id, updates, updatedBy = null) {
+  if (!ensure()) return;
+
+  // Whitelist fields to avoid sending system/computed props like $id, $createdAt, _createdName
+  const allowed = [
+    "title",
+    "description",
+    "status",
+    "priority",
+    "dueDate",
+    "assigneeId",
+  ];
+
+  const patch = {};
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
+      // Normalize empty dueDate to null
+      patch[key] = key === "dueDate" && !updates[key] ? null : updates[key];
+    }
+  }
+  if (updatedBy) patch.updatedBy = updatedBy;
+
+  return await db.updateDocument(databaseId, tasksCollectionId, id, patch);
 }
 
-// 🟩 Видалити завдання
+/* =====================================================
+   DELETE TASK
+===================================================== */
 export async function deleteTask(id) {
-  if (!ensureIds()) return;
-  return await databases.deleteDocument(databaseId, tasksCollectionId, id);
+  if (!ensure()) return;
+  return await db.deleteDocument(databaseId, tasksCollectionId, id);
 }
