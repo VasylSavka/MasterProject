@@ -7,8 +7,12 @@ import {
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import Dashboard from "./pages/Dashboard";
 import PropTypes from "prop-types";
+import ConfirmInvite from "./pages/ConfirmInvite";
+import DashboardLayout from "./components/DashboardLayout";
+import DashboardHome from "./pages/DashboardHome";
+import ProjectDetail from "./pages/ProjectDetail";
+import Teams from "./pages/Teams";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -36,13 +40,18 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route
-            path="/dashboard"
+            path="/dashboard/*"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <DashboardLayout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route index element={<DashboardHome />} />
+            <Route path="projects/:projectId" element={<ProjectDetail />} />
+            <Route path="teams" element={<Teams />} />
+          </Route>
+          <Route path="/teams/confirm" element={<ConfirmInvite />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Router>

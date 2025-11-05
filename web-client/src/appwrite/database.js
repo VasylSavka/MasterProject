@@ -78,3 +78,111 @@ export async function updateProject(id, data) {
     data
   );
 }
+
+export async function getProjectById(id) {
+  if (!ensureIds()) return;
+  return await databases.getDocument(databaseId, projectsCollectionId, id);
+}
+
+// 🟩 Отримати проєкти за teamId (для членів команди)
+export async function getProjectsByTeam(teamId) {
+  if (!ensureIds()) return { documents: [] };
+  return await databases.listDocuments(databaseId, projectsCollectionId, [
+    Query.equal("teamId", teamId),
+  ]);
+}
+
+// Ensure optional attribute `teamId` exists on Projects collection (admin)
+export async function ensureProjectsTeamIdAttribute() {
+  if (!ensureIds()) return;
+  const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT;
+  const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID;
+  const apiKey = import.meta.env.VITE_APPWRITE_API_KEY;
+
+  if (!endpoint || !projectId || !apiKey) return;
+
+  try {
+    const res = await fetch(
+      `${endpoint}/databases/${databaseId}/collections/${projectsCollectionId}/attributes/string`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Appwrite-Project": projectId,
+          "X-Appwrite-Key": apiKey,
+        },
+        body: JSON.stringify({
+          key: "teamId",
+          size: 64,
+          required: false,
+          default: null,
+          array: false,
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      // If attribute already exists, treat as success
+      if (data?.code === 409 || /already exists/i.test(data?.message || "")) {
+        return true;
+      }
+      throw new Error(data?.message || "Failed to create attribute teamId");
+    }
+    return true;
+  } catch (e) {
+    console.warn("ensureProjectsTeamIdAttribute failed:", e?.message || e);
+    return false;
+  }
+}
+
+// 🔐 Додати правo читання для команди до документа проєкту
+export async function addTeamReadPermission(projectDoc, teamId) {
+  if (!ensureIds() || !projectDoc || !teamId) return;
+  const managerId = projectDoc.managerId;
+  const permissions = [
+    Permission.read(Role.user(managerId)),
+    Permission.update(Role.user(managerId)),
+    Permission.delete(Role.user(managerId)),
+    Permission.read(Role.team(teamId)), // дозволити читання всім членам команди
+  ];
+  // пусті дані, щоб оновити лише permissions
+  return await databases.updateDocument(
+    databaseId,
+    projectsCollectionId,
+    projectDoc.$id,
+    {},
+    permissions
+  );
+}
+
+export async function syncUserToDatabase(user) {
+  if (!user || !user.$id) return;
+
+  const usersCollectionId = import.meta.env.VITE_APPWRITE_USERS_COLLECTION_ID;
+
+  try {
+    const res = await databases.listDocuments(databaseId, usersCollectionId, [
+      Query.equal("email", [user.email]),
+    ]);
+
+    if (res.documents.length === 0) {
+      await databases.createDocument(
+        databaseId,
+        usersCollectionId,
+        ID.unique(),
+        {
+          name: user.name,
+          email: user.email,
+          role: "member",
+          userId: user.$id,
+        }
+      );
+      console.log("✅ User synced to Users collection:", user.email);
+    } else {
+      console.log("ℹ️ User already exists in Users collection");
+    }
+  } catch (err) {
+    console.error("❌ Sync user failed:", err);
+  }
+}

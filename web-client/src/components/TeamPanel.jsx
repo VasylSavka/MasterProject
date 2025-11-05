@@ -1,10 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { toast } from "react-hot-toast";
-import { getTeamMembers, removeMember, createTeam, inviteMember } from "../appwrite/teams";
-import { Teams } from "appwrite";
-import client from "../appwrite/client";
+import {
+  getTeamMembers,
+  removeMember,
+  createTeam,
+  inviteMember,
+  getUserById,
+} from "../appwrite/teams";
+import { updateProject, ensureProjectsTeamIdAttribute, addTeamReadPermission } from "../appwrite/database";
+import { useAuth } from "../context/AuthContext";
 export default function TeamPanel({ project }) {
+  const { user } = useAuth();
   const [members, setMembers] = useState([]);
   const [email, setEmail] = useState("");
   const [teamId, setTeamId] = useState(project.teamId || null);
@@ -17,7 +24,20 @@ export default function TeamPanel({ project }) {
   async function fetchMembers() {
     try {
       const res = await getTeamMembers(teamId);
-      setMembers(res.memberships || []);
+      const base = res.memberships || [];
+      // Збагачуємо ім’я користувача, якщо воно порожнє
+      const enriched = await Promise.all(
+        base.map(async (m) => {
+          if (!m.userName && m.userId) {
+            const u = await getUserById(m.userId);
+            if (u && u.name) {
+              return { ...m, userName: u.name, userEmail: u.email || m.userEmail };
+            }
+          }
+          return m;
+        })
+      );
+      setMembers(enriched);
     } catch (err) {
       console.error("Помилка отримання учасників:", err);
       toast.error("Не вдалося завантажити учасників");
@@ -29,9 +49,36 @@ export default function TeamPanel({ project }) {
     try {
       const newTeam = await createTeam(project.name);
       setTeamId(newTeam.$id);
-      toast.success("✅ Команду створено");
+      try {
+        await updateProject(project.$id, { teamId: newTeam.$id });
+      } catch (err) {
+        // If schema is missing teamId, attempt to create attribute and retry once
+        const msg = err?.message || "";
+        if (/Unknown attribute:\s*\"teamId\"/i.test(msg) || /document_invalid_structure/i.test(msg)) {
+          const ok = await ensureProjectsTeamIdAttribute();
+          if (ok) {
+            // small delay to let attribute become available
+            await new Promise((r) => setTimeout(r, 800));
+            await updateProject(project.$id, { teamId: newTeam.$id });
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
+      // додати право читання для всієї команди до документа проекту
+      try {
+        await addTeamReadPermission(project, newTeam.$id);
+      } catch (e) {
+        console.warn("Не вдалося додати права читання для команди:", e?.message || e);
+      }
+      // Після створення одразу підтягнемо учасників (щоб показати owner з ім'ям)
+      await fetchMembers();
+      toast.success("✅ Команду створено та прив'язано до проєкту");
     } catch (err) {
-      toast.error("❌ Помилка створення команди");
+      console.error("Create team error:", err);
+      toast.error("❌ Помилка створення команди або збереження teamId");
     }
   }
 
@@ -49,8 +96,14 @@ export default function TeamPanel({ project }) {
       success: `📨 Запрошення надіслано: ${email}`,
       error: "❌ Не вдалося запросити користувача",
     });
-    setEmail("");
-    fetchMembers();
+    try {
+      await doInvite();
+      setEmail("");
+      // Після створення membership одразу перезавантажимо список
+      await fetchMembers();
+    } catch {
+      // no-op — тости вже показані
+    }
   }
 
   // ❌ Видалити користувача
@@ -63,6 +116,21 @@ export default function TeamPanel({ project }) {
     });
     fetchMembers();
   }
+
+  const orderedMembers = useMemo(() => {
+    const withDisplay = (m) => {
+      const isCurrent = m.userId && user && m.userId === user.$id;
+      const baseName = isCurrent
+        ? user.name
+        : m.userName || m.userEmail || `Користувач ${m.userId?.slice(-6) || "?"}`;
+      const isOwner = (m.roles || []).includes("owner");
+      const roleLabel = isOwner ? "owner" : "member";
+      return { ...m, _displayName: `${baseName} (${roleLabel})`, _isOwner: isOwner, _roleLabel: roleLabel };
+    };
+    const mapped = (members || []).map(withDisplay);
+    // owner першим
+    return mapped.sort((a, b) => (a._isOwner === b._isOwner ? 0 : a._isOwner ? -1 : 1));
+  }, [members, user]);
 
   return (
     <div className="bg-gray-100 p-4 rounded-lg mt-4">
@@ -93,28 +161,19 @@ export default function TeamPanel({ project }) {
           </form>
 
           {/* 📋 Список учасників */}
-          {members.length > 0 ? (
-            <ul className="space-y-2">
-              {members.map((m) => (
-                <li
-                  key={m.$id}
-                  className="bg-white p-3 rounded-lg shadow flex justify-between items-center"
-                >
-                  <div>
-                    <p className="font-medium">{m.userName || m.userEmail}</p>
-                    <p className="text-sm text-gray-500">
-                      {m.roles.join(", ")}
-                    </p>
-                  </div>
+          {orderedMembers.length > 0 ? (
+            <ol className="space-y-2 list-decimal ml-5">
+              {orderedMembers.map((m, idx) => (
+                <li key={m.$id} className="bg-white p-3 rounded-lg shadow flex items-center">
+                  <span className="font-medium">{m._displayName}</span>
                   <button
                     onClick={() => handleRemove(m.$id)}
-                    className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                    className="ml-auto bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
                   >
                     Видалити
                   </button>
-                </li>
-              ))}
-            </ul>
+                </li>) )}
+            </ol>
           ) : (
             <p className="text-gray-500 text-center">Команда поки що порожня</p>
           )}

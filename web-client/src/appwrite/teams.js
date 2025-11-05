@@ -13,6 +13,16 @@ export async function createTeam(name) {
   }
 }
 
+/** 📋 Список команд поточного користувача/проекту */
+export async function listTeams() {
+  try {
+    return await teams.list();
+  } catch (err) {
+    console.error("Помилка отримання списку команд:", err);
+    throw err;
+  }
+}
+
 /** 👥 Отримати список учасників команди */
 export async function getTeamMembers(teamId) {
   try {
@@ -89,6 +99,40 @@ export async function removeMember(teamId, membershipId) {
   } catch (err) {
     console.error("Помилка видалення користувача:", err);
     throw err;
+  }
+}
+
+export async function confirmMembership(teamId, membershipId, userId, secret) {
+  try {
+    return await client.call(
+      "patch",
+      `/teams/${teamId}/memberships/${membershipId}/status`,
+      { "content-type": "application/json" },
+      { userId, secret }
+    );
+  } catch (err) {
+    console.error("Помилка підтвердження участі:", err);
+    throw err;
+  }
+}
+
+/** 👤 Отримати користувача за id (адмінний REST; потрібен API key з users.read) */
+export async function getUserById(userId) {
+  const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT;
+  const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID;
+  const apiKey = import.meta.env.VITE_APPWRITE_API_KEY;
+  if (!endpoint || !projectId || !apiKey || !userId) return null;
+  try {
+    const res = await fetch(`${endpoint}/users/${userId}`, {
+      headers: {
+        "X-Appwrite-Project": projectId,
+        "X-Appwrite-Key": apiKey,
+      },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
 }
 
