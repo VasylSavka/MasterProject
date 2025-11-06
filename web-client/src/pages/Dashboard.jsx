@@ -5,7 +5,10 @@ import {
   createProject,
   deleteProject,
   updateProject,
+  getProjectById,
+  deleteProjectAndTasks,
 } from "../appwrite/database";
+import { deleteTeam } from "../appwrite/teams";
 import { useAuth } from "../context/AuthContext";
 import TasksPanel from "../components/TasksPanel";
 import TeamPanel from "../components/TeamPanel";
@@ -72,25 +75,47 @@ export default function Dashboard() {
 
   async function handleDelete(id) {
     if (!confirm("Видалити проєкт?")) return;
-    await deleteProject(id);
-    fetchProjects();
+    let teamId = null;
+    try {
+      const proj = await getProjectById(id);
+      teamId = proj?.teamId || null;
+    } catch {}
+    try {
+      if (teamId) {
+        try { await deleteTeam(teamId); } catch {}
+      }
+      await deleteProjectAndTasks(id);
+    } finally {
+      fetchProjects();
+    }
   }
 
   async function handleUpdate(e) {
     e.preventDefault();
+    const prev = projects.find((p) => p.$id === editingProject.$id);
+    const statusChanged = prev && prev.status !== editingProject.status;
+    const payload = {
+      name: editingProject.name,
+      description: editingProject.description,
+      status: editingProject.status,
+      endDate: editingProject.endDate
+        ? new Date(editingProject.endDate).toISOString()
+        : null,
+    };
+    const updatePromise = updateProject(editingProject.$id, payload);
+    toast.promise(updatePromise, {
+      loading: "⏳ Оновлення проєкту...",
+      success: statusChanged
+        ? `✅ Статус проєкту "${editingProject.name}" змінено на ${editingProject.status}`
+        : `✅ Проєкт "${editingProject.name}" оновлено`,
+      error: "❌ Не вдалося оновити проєкт",
+    });
     try {
-      await updateProject(editingProject.$id, {
-        name: editingProject.name,
-        description: editingProject.description,
-        status: editingProject.status,
-        endDate: editingProject.endDate
-          ? new Date(editingProject.endDate).toISOString()
-          : null,
-      });
+      await updatePromise;
       setEditingProject(null);
       fetchProjects();
-    } catch (err) {
-      alert("❌ Не вдалося оновити проєкт: " + err.message);
+    } catch {
+      // toast already handled error
     }
   }
 

@@ -8,7 +8,11 @@ import {
   inviteMember,
   getUserById,
 } from "../appwrite/teams";
-import { updateProject, ensureProjectsTeamIdAttribute, addTeamReadPermission } from "../appwrite/database";
+import {
+  updateProject,
+  ensureProjectsTeamIdAttribute,
+  addTeamReadPermission,
+} from "../appwrite/database";
 import { useAuth } from "../context/AuthContext";
 export default function TeamPanel({ project }) {
   const { user } = useAuth();
@@ -31,17 +35,34 @@ export default function TeamPanel({ project }) {
           if (!m.userName && m.userId) {
             const u = await getUserById(m.userId);
             if (u && u.name) {
-              return { ...m, userName: u.name, userEmail: u.email || m.userEmail };
+              return {
+                ...m,
+                userName: u.name,
+                userEmail: u.email || m.userEmail,
+              };
             }
           }
           return m;
         })
       );
       setMembers(enriched);
+      return enriched;
     } catch (err) {
-      console.error("Помилка отримання учасників:", err);
-      toast.error("Не вдалося завантажити учасників");
+      console.warn("Помилка отримання учасників:", err?.message || err);
+      // уникаємо дублювання тостів; тихо провалюємось і показуємо порожній список
+      return [];
     }
+  }
+
+  const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function fetchMembersWithRetry(expectedMin = null, attempts = 5, waitMs = 600) {
+    for (let i = 0; i < attempts; i++) {
+      const list = await fetchMembers();
+      if (expectedMin == null || list.length >= expectedMin) return list;
+      await delay(waitMs);
+    }
+    return members;
   }
 
   // 🧱 Створити команду для проєкту (якщо ще не існує)
@@ -54,7 +75,10 @@ export default function TeamPanel({ project }) {
       } catch (err) {
         // If schema is missing teamId, attempt to create attribute and retry once
         const msg = err?.message || "";
-        if (/Unknown attribute:\s*\"teamId\"/i.test(msg) || /document_invalid_structure/i.test(msg)) {
+        if (
+          /Unknown attribute:\s*"teamId"/i.test(msg) ||
+          /document_invalid_structure/i.test(msg)
+        ) {
           const ok = await ensureProjectsTeamIdAttribute();
           if (ok) {
             // small delay to let attribute become available
@@ -71,10 +95,14 @@ export default function TeamPanel({ project }) {
       try {
         await addTeamReadPermission(project, newTeam.$id);
       } catch (e) {
-        console.warn("Не вдалося додати права читання для команди:", e?.message || e);
+        console.warn(
+          "Не вдалося додати права читання для команди:",
+          e?.message || e
+        );
       }
       // Після створення одразу підтягнемо учасників (щоб показати owner з ім'ям)
-      await fetchMembers();
+      // Після створення одразу підтягнемо учасників з ретраями (очікуємо власника)
+      await fetchMembersWithRetry(1);
       toast.success("✅ Команду створено та прив'язано до проєкту");
     } catch (err) {
       console.error("Create team error:", err);
@@ -99,8 +127,8 @@ export default function TeamPanel({ project }) {
     try {
       await doInvite();
       setEmail("");
-      // Після створення membership одразу перезавантажимо список
-      await fetchMembers();
+      // Після створення membership дочекаємось появи нового учасника
+      await fetchMembersWithRetry((members?.length || 0) + 1);
     } catch {
       // no-op — тости вже показані
     }
@@ -108,13 +136,19 @@ export default function TeamPanel({ project }) {
 
   // ❌ Видалити користувача
   async function handleRemove(memberId) {
+    const member = (members || []).find((m) => m.$id === memberId);
+    const isOwner = (member?.roles || []).includes("owner");
+    if (isOwner) {
+      toast.error("Неможливо видалити власника команди");
+      return;
+    }
     if (!confirm("Видалити учасника з команди?")) return;
     toast.promise(removeMember(teamId, memberId), {
       loading: "🗑️ Видаляємо...",
       success: "✅ Учасника видалено",
       error: "❌ Помилка видалення учасника",
     });
-    fetchMembers();
+    await fetchMembers();
   }
 
   const orderedMembers = useMemo(() => {
@@ -122,14 +156,23 @@ export default function TeamPanel({ project }) {
       const isCurrent = m.userId && user && m.userId === user.$id;
       const baseName = isCurrent
         ? user.name
-        : m.userName || m.userEmail || `Користувач ${m.userId?.slice(-6) || "?"}`;
+        : m.userName ||
+          m.userEmail ||
+          `Користувач ${m.userId?.slice(-6) || "?"}`;
       const isOwner = (m.roles || []).includes("owner");
       const roleLabel = isOwner ? "owner" : "member";
-      return { ...m, _displayName: `${baseName} (${roleLabel})`, _isOwner: isOwner, _roleLabel: roleLabel };
+      return {
+        ...m,
+        _displayName: `${baseName} (${roleLabel})`,
+        _isOwner: isOwner,
+        _roleLabel: roleLabel,
+      };
     };
     const mapped = (members || []).map(withDisplay);
     // owner першим
-    return mapped.sort((a, b) => (a._isOwner === b._isOwner ? 0 : a._isOwner ? -1 : 1));
+    return mapped.sort((a, b) =>
+      a._isOwner === b._isOwner ? 0 : a._isOwner ? -1 : 1
+    );
   }, [members, user]);
 
   return (
@@ -163,16 +206,22 @@ export default function TeamPanel({ project }) {
           {/* 📋 Список учасників */}
           {orderedMembers.length > 0 ? (
             <ol className="space-y-2 list-decimal ml-5">
-              {orderedMembers.map((m, idx) => (
-                <li key={m.$id} className="bg-white p-3 rounded-lg shadow flex items-center">
+              {orderedMembers.map((m) => (
+                <li
+                  key={m.$id}
+                  className="bg-white p-3 rounded-lg shadow flex items-center"
+                >
                   <span className="font-medium">{m._displayName}</span>
-                  <button
-                    onClick={() => handleRemove(m.$id)}
-                    className="ml-auto bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                  >
-                    Видалити
-                  </button>
-                </li>) )}
+                  {!(m.roles || []).includes("owner") && (
+                    <button
+                      onClick={() => handleRemove(m.$id)}
+                      className="ml-auto bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                    >
+                      Видалити
+                    </button>
+                  )}
+                </li>
+              ))}
             </ol>
           ) : (
             <p className="text-gray-500 text-center">Команда поки що порожня</p>
@@ -186,6 +235,7 @@ export default function TeamPanel({ project }) {
 TeamPanel.propTypes = {
   project: PropTypes.shape({
     name: PropTypes.string.isRequired,
+    $id: PropTypes.string.isRequired,
     teamId: PropTypes.string,
   }).isRequired,
 };

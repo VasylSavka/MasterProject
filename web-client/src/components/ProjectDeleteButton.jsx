@@ -1,6 +1,7 @@
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-import { deleteProjectAndTasks } from "../appwrite/database";
+import { deleteProjectAndTasks, getProjectById } from "../appwrite/database";
+import { deleteTeam } from "../appwrite/teams";
 import toast from "react-hot-toast";
 
 export default function ProjectDeleteButton({ projectId, afterDelete }) {
@@ -10,7 +11,26 @@ export default function ProjectDeleteButton({ projectId, afterDelete }) {
     if (!projectId) return;
     if (!confirm("Видалити проєкт та всі його завдання?")) return;
 
-    const doDelete = deleteProjectAndTasks(projectId);
+    // try to fetch project to see if it has a team
+    let teamId = null;
+    try {
+      const proj = await getProjectById(projectId);
+      teamId = proj?.teamId || null;
+    } catch {}
+
+    // Compose deletion: delete tasks+project, and also delete team (best effort)
+    const doDelete = (async () => {
+      // If team exists, attempt to delete it first to avoid orphan teams
+      if (teamId) {
+        try {
+          await deleteTeam(teamId);
+        } catch {
+          // best effort — continue even if team deletion fails
+        }
+      }
+      await deleteProjectAndTasks(projectId);
+    })();
+
     toast.promise(doDelete, {
       loading: "🗑️ Видаляємо проєкт...",
       success: "✅ Проєкт видалено",
@@ -40,4 +60,3 @@ ProjectDeleteButton.propTypes = {
   projectId: PropTypes.string,
   afterDelete: PropTypes.func,
 };
-

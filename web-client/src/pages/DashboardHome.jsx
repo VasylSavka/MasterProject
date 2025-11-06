@@ -1,168 +1,107 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { createProject, getProjects, getProjectsByTeam } from "../appwrite/database";
-import toast from "react-hot-toast";
+import { getProjects, getProjectsByTeam } from "../appwrite/database";
 import { listTeams } from "../appwrite/teams";
+import ProjectCreateForm from "../components/ProjectCreateForm";
 
 export default function DashboardHome() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [newProject, setNewProject] = useState({
-    name: "",
-    description: "",
-    status: "active",
-    startDate: "",
-    endDate: "",
-  });
+  // Створення форми винесено у ProjectCreateForm
+
+  // ✅ Нові фільтри
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortBy, setSortBy] = useState("created");
 
+  async function loadAll() {
+    // Власні проєкти
+    const own = await getProjects(user.$id).catch(() => ({ documents: [] }));
+
+    // Команди
+    const tRes = await listTeams().catch(() => ({ teams: [] }));
+    const userTeams = tRes.teams || tRes.documents || [];
+
+    // Проєкти команд
+    const teamProjectsSets = await Promise.all(
+      userTeams.map((t) => getProjectsByTeam(t.$id).catch(() => ({ documents: [] })))
+    );
+    const teamProjects = [];
+    teamProjectsSets.forEach((r) => teamProjects.push(...(r.documents || [])));
+
+    // Унікалізація (Map по id)
+    const byId = new Map();
+    [...(own.documents || []), ...teamProjects].forEach((p) => byId.set(p.$id, p));
+    setProjects([...byId.values()]);
+  }
+
   useEffect(() => {
     (async () => {
       try {
-        // власні проєкти
-        const own = await getProjects(user.$id).catch(() => ({ documents: [] }));
-        // проєкти команд, де я учасник
-        const tRes = await listTeams().catch(() => ({ teams: [] }));
-        const teams = tRes.teams || tRes.documents || [];
-        const teamProjectsSets = await Promise.all(
-          teams.map((t) => getProjectsByTeam(t.$id).catch(() => ({ documents: [] })))
-        );
-        const teamProjects = [];
-        teamProjectsSets.forEach((r) => teamProjects.push(...(r.documents || [])));
-        // унікалізація
-        const byId = new Map();
-        [...(own.documents || []), ...teamProjects].forEach((p) => byId.set(p.$id, p));
-        setProjects([...byId.values()]);
+        await loadAll();
       } finally {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.$id]);
 
-  async function handleCreate(e) {
-    e.preventDefault();
-    const payload = {
-      name: newProject.name,
-      description: newProject.description || undefined,
-      status: newProject.status,
-      startDate: newProject.startDate
-        ? new Date(newProject.startDate).toISOString()
-        : new Date().toISOString(),
-      endDate: newProject.endDate
-        ? new Date(newProject.endDate).toISOString()
-        : undefined,
-      managerId: user?.$id,
-    };
+  // Створення проєкту обробляє ProjectCreateForm; після успіху викликаємо loadAll
 
-    const createPromise = createProject(payload);
-    toast.promise(createPromise, {
-      loading: "⏳ Створення проєкту...",
-      success: `✅ Проєкт "${payload.name}" створено`,
-      error: "❌ Не вдалося створити проєкт",
-    });
-    await createPromise;
-    setNewProject({
-      name: "",
-      description: "",
-      status: "active",
-      startDate: "",
-      endDate: "",
-    });
-
-    const res = await getProjects(user.$id);
-    setProjects(res.documents);
-  }
-
+  // ✅ Комбінована фільтрація
   const visible = useMemo(() => {
-    const filtered = projects.filter((p) =>
-      filterStatus === "all" ? true : p.status === filterStatus
-    );
-    return filtered.sort((a, b) => {
+    let list = [...projects];
+
+    // ✅ Фільтр по статусу
+    if (filterStatus !== "all") {
+      list = list.filter((p) => p.status === filterStatus);
+    }
+
+    // ✅ Пошук по назві
+    if (searchTerm.trim().length > 0) {
+      list = list.filter((p) =>
+        p.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // ✅ Сортування
+    return list.sort((a, b) => {
       if (sortBy === "name") return a.name.localeCompare(b.name);
       if (sortBy === "start")
         return new Date(a.startDate) - new Date(b.startDate);
       return new Date(b.$createdAt) - new Date(a.$createdAt); // created desc
     });
-  }, [projects, filterStatus, sortBy]);
+  }, [projects, filterStatus, sortBy, searchTerm]);
+
+  if (loading)
+    return <p className="text-gray-500 text-center">Завантаження...</p>;
 
   return (
     <div className="w-full">
-      {/* Create project (centered) */}
+      {/* Create project */}
       <div className="mx-auto max-w-3xl">
-        <form
-          onSubmit={handleCreate}
-          className="bg-white p-4 rounded-lg shadow mb-6"
-        >
-          <h2 className="text-lg font-semibold mb-3 text-center">
-            Створити новий проєкт
-          </h2>
-          <input
-            type="text"
-            placeholder="Назва"
-            value={newProject.name}
-            onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-            className="border p-2 w-full mb-3 rounded"
-            required
-          />
-          <textarea
-            placeholder="Опис (необов’язково)"
-            value={newProject.description}
-            onChange={(e) =>
-              setNewProject({ ...newProject, description: e.target.value })
-            }
-            className="border p-2 w-full mb-3 rounded"
-          />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-            <div>
-              <label className="block mb-1 text-sm">Статус</label>
-              <select
-                className="border p-2 w-full rounded"
-                value={newProject.status}
-                onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
-                required
-              >
-                <option value="active">active</option>
-                <option value="on_hold">on_hold</option>
-                <option value="completed">completed</option>
-              </select>
-            </div>
-            <div>
-              <label className="block mb-1 text-sm">Початок</label>
-              <input
-                type="datetime-local"
-                className="border p-2 w-full rounded"
-                value={newProject.startDate}
-                onChange={(e) => setNewProject({ ...newProject, startDate: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label className="block mb-1 text-sm">Кінець (необов’язково)</label>
-              <input
-                type="datetime-local"
-                className="border p-2 w-full rounded"
-                value={newProject.endDate}
-                onChange={(e) => setNewProject({ ...newProject, endDate: e.target.value })}
-              />
-            </div>
+        <ProjectCreateForm managerId={user?.$id} onCreated={loadAll} />
+        {/* ✅ Фільтри */}
+        <div className="bg-white p-4 rounded-lg shadow mb-4 space-y-3">
+          {/* 🔍 Пошук */}
+          <div>
+            <input
+              type="text"
+              placeholder="Пошук проєкту..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="border p-2 rounded w-full"
+            />
           </div>
-          <div className="flex justify-center">
-            <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-              Додати проєкт
-            </button>
-          </div>
-        </form>
 
-        {/* Filters/sorting */}
-        <div className="bg-white p-4 rounded-lg shadow mb-4">
+          {/* ✅ Існуючі фільтри та сортування */}
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Фільтр:</span>
+              <span className="text-sm text-gray-600">Статус:</span>
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -174,6 +113,7 @@ export default function DashboardHome() {
                 <option value="completed">completed</option>
               </select>
             </div>
+
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">Сортувати:</span>
               <select
@@ -189,11 +129,9 @@ export default function DashboardHome() {
           </div>
         </div>
 
-        {/* Projects list */}
+        {/* ✅ Список проєктів */}
         <div className="grid gap-4">
-          {loading ? (
-            <p className="text-gray-500 text-center">Завантаження...</p>
-          ) : visible.length > 0 ? (
+          {visible.length > 0 ? (
             visible.map((p) => (
               <div
                 key={p.$id}
@@ -203,21 +141,21 @@ export default function DashboardHome() {
                   <h3 className="font-semibold text-lg">{p.name}</h3>
                   <p className="text-gray-600 line-clamp-2">{p.description}</p>
                   <p className="text-sm text-gray-400">
-                    Статус: {p.status} | Початок: {new Date(p.startDate).toLocaleDateString()} | Кінець: {p.endDate ? new Date(p.endDate).toLocaleDateString() : "—"}
+                    Статус: {p.status} | Початок:{" "}
+                    {new Date(p.startDate).toLocaleDateString()} | Кінець:{" "}
+                    {p.endDate ? new Date(p.endDate).toLocaleDateString() : "—"}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <Link
-                    to={`/dashboard/projects/${p.$id}`}
-                    className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-                  >
-                    Відкрити
-                  </Link>
-                </div>
+                <Link
+                  to={`/dashboard/projects/${p.$id}`}
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                >
+                  Відкрити
+                </Link>
               </div>
             ))
           ) : (
-            <p className="text-gray-500 text-center">Немає створених проєктів</p>
+            <p className="text-gray-500 text-center">Немає проєктів</p>
           )}
         </div>
       </div>
