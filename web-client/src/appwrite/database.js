@@ -1,4 +1,3 @@
-// src/appwrite/database.js
 import { ID, Query, Permission, Role } from "appwrite";
 import { databases } from "./client";
 
@@ -15,8 +14,6 @@ function ensureIds() {
   }
   return true;
 }
-
-/* ========================= PROJECTS ========================= */
 
 export async function getProjects(userId) {
   if (!ensureIds()) return { documents: [] };
@@ -62,9 +59,7 @@ export async function deleteProject(id) {
   return await databases.deleteDocument(databaseId, projectsCollectionId, id);
 }
 
-// Deletes a project and all its tasks (best-effort, limited batch)
 export async function deleteProjectAndTasks(projectId, { batch = 100 } = {}) {
-  // 1) Delete tasks for this project (up to `batch` docs)
   try {
     const tasks = await databases.listDocuments(databaseId, tasksCollectionId, [
       Query.equal("projectId", projectId),
@@ -75,19 +70,15 @@ export async function deleteProjectAndTasks(projectId, { batch = 100 } = {}) {
       try {
         await databases.deleteDocument(databaseId, tasksCollectionId, t.$id);
       } catch (e) {
-        // continue on best-effort
         console.warn("Task delete failed", t.$id, e?.message || e);
       }
     }
   } catch (e) {
     console.warn("List tasks failed", e?.message || e);
   }
-
-  // 2) Delete the project document
   return await deleteProject(projectId);
 }
 
-/* Додає право читання команді */
 export async function addTeamReadPermission(project, teamId) {
   const perms = project.$permissions || [];
   const readPerm = `read("team:${teamId}")`;
@@ -104,7 +95,6 @@ export async function addTeamReadPermission(project, teamId) {
   return project;
 }
 
-/* Створює атрибут teamId якщо він відсутній */
 export async function ensureProjectsTeamIdAttribute() {
   try {
     await databases.createStringAttribute(
@@ -121,8 +111,6 @@ export async function ensureProjectsTeamIdAttribute() {
   }
 }
 
-/* ========================= SYNC USER ========================= */
-
 export async function syncUserToDatabase(user) {
   if (!ensureIds()) return;
   try {
@@ -130,7 +118,5 @@ export async function syncUserToDatabase(user) {
       name: user.name,
       email: user.email,
     });
-  } catch {
-    // ignore
-  }
+  } catch {}
 }

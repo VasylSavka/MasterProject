@@ -11,22 +11,17 @@ export default function ProjectDeleteButton({ projectId, afterDelete }) {
     if (!projectId) return;
     if (!confirm("Видалити проєкт та всі його завдання?")) return;
 
-    // try to fetch project to see if it has a team
     let teamId = null;
     try {
       const proj = await getProjectById(projectId);
       teamId = proj?.teamId || null;
     } catch {}
 
-    // Compose deletion: delete tasks+project, and also delete team (best effort)
     const doDelete = (async () => {
-      // If team exists, attempt to delete it first to avoid orphan teams
       if (teamId) {
         try {
           await deleteTeam(teamId);
-        } catch {
-          // best effort — continue even if team deletion fails
-        }
+        } catch {}
       }
       await deleteProjectAndTasks(projectId);
     })();
@@ -41,15 +36,13 @@ export default function ProjectDeleteButton({ projectId, afterDelete }) {
       await doDelete;
       if (afterDelete) afterDelete();
       else navigate(-1);
-    } catch {
-      // no-op, toast handles error
-    }
+    } catch {}
   }
 
   return (
     <button
       onClick={onDelete}
-      className="bg-red-600 text-white px-3 py-1.5 rounded hover:bg-red-700"
+      className="bg-red-600 text-white px-3 py-1.5 rounded hover:bg-red-700 cursor-pointer"
     >
       Видалити проєкт
     </button>

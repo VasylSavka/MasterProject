@@ -3,7 +3,6 @@ import toast from "react-hot-toast";
 import {
   getProjects,
   createProject,
-  deleteProject,
   updateProject,
   getProjectById,
   deleteProjectAndTasks,
@@ -68,9 +67,7 @@ export default function Dashboard() {
         endDate: "",
       });
       fetchProjects();
-    } catch (err) {
-      // помилку вже показано в toast.promise; додаткових alert не потрібно
-    }
+    } catch {}
   }
 
   async function handleDelete(id) {
@@ -82,7 +79,9 @@ export default function Dashboard() {
     } catch {}
     try {
       if (teamId) {
-        try { await deleteTeam(teamId); } catch {}
+        try {
+          await deleteTeam(teamId);
+        } catch {}
       }
       await deleteProjectAndTasks(id);
     } finally {
@@ -114,9 +113,7 @@ export default function Dashboard() {
       await updatePromise;
       setEditingProject(null);
       fetchProjects();
-    } catch {
-      // toast already handled error
-    }
+    } catch {}
   }
 
   return (
@@ -131,7 +128,6 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Форма створення нового проєкту */}
       <form
         onSubmit={handleCreate}
         className="bg-white p-4 rounded-lg shadow mb-6"
@@ -200,7 +196,6 @@ export default function Dashboard() {
         </button>
       </form>
 
-      {/* Список проєктів */}
       <div className="grid gap-4">
         {projects.length > 0 ? (
           projects.map((p) =>

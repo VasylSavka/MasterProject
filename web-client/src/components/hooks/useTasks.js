@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import client from "../../appwrite/client";
-import { getTasks as apiGetTasks, createTask as apiCreateTask, updateTask as apiUpdateTask, deleteTask as apiDeleteTask } from "../../appwrite/tasks";
+import {
+  getTasks as apiGetTasks,
+  createTask as apiCreateTask,
+  updateTask as apiUpdateTask,
+  deleteTask as apiDeleteTask,
+} from "../../appwrite/tasks";
 import { enrichTask, enrichTasks } from "../utils/taskHelpers";
 import toast from "react-hot-toast";
 
@@ -33,9 +38,10 @@ export default function useTasks(projectId, user) {
           toast.success(`🆕 Завдання "${doc.title}" створено`);
         } else if (event.includes("update")) {
           const enriched = await enrichTask(doc);
-          setTasks((prev) => prev.map((t) => (t.$id === doc.$id ? enriched : t)));
+          setTasks((prev) =>
+            prev.map((t) => (t.$id === doc.$id ? enriched : t))
+          );
         } else if (event.includes("delete")) {
-          // Оновлюємо список без додаткових тостів, щоб уникати дублювання
           setTasks((prev) => prev.filter((t) => t.$id !== doc.$id));
         }
       }
@@ -52,7 +58,6 @@ export default function useTasks(projectId, user) {
       createdBy: user?.$id,
     };
     try {
-      // Не показуємо успішний тост тут, щоб уникнути дублювання з realtime
       return await apiCreateTask(payload);
     } catch (err) {
       toast.error("❌ Помилка створення завдання");

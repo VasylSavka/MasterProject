@@ -1,10 +1,13 @@
-import PropTypes from "prop-types";
 import { useState } from "react";
+import PropTypes from "prop-types";
+import { useAuth } from "../context/AuthContext";
 import { createProject } from "../appwrite/database";
 import toast from "react-hot-toast";
 
-export default function ProjectCreateForm({ managerId, onCreated }) {
-  const [form, setForm] = useState({
+const ProjectCreateForm = ({ onCreated }) => {
+  const { user } = useAuth();
+
+  const [formData, setFormData] = useState({
     name: "",
     description: "",
     status: "active",
@@ -12,93 +15,102 @@ export default function ProjectCreateForm({ managerId, onCreated }) {
     endDate: "",
   });
 
-  async function handleSubmit(e) {
+  const handleChange = (e) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = {
-      name: form.name,
-      description: form.description || undefined,
-      status: form.status,
-      startDate: form.startDate
-        ? new Date(form.startDate).toISOString()
+      name: formData.name,
+      description: formData.description || undefined,
+      status: formData.status,
+      startDate: formData.startDate
+        ? new Date(formData.startDate).toISOString()
         : new Date().toISOString(),
-      endDate: form.endDate ? new Date(form.endDate).toISOString() : undefined,
-      managerId,
+      endDate: formData.endDate
+        ? new Date(formData.endDate).toISOString()
+        : undefined,
+      managerId: user?.$id,
     };
-
-    const promise = createProject(payload);
-    toast.promise(promise, {
-      loading: "⏳ Створення проєкту...",
-      success: `✅ Проєкт "${payload.name}" створено`,
-      error: "❌ Не вдалося створити проєкт",
-    });
-
     try {
-      await promise;
-      setForm({ name: "", description: "", status: "active", startDate: "", endDate: "" });
-      if (onCreated) onCreated();
+      await createProject(payload);
+      toast.success(`Проєкт "${payload.name}" успішно створено`);
+      if (typeof onCreated === "function") onCreated();
+      setFormData({
+        name: "",
+        description: "",
+        status: "active",
+        startDate: "",
+        endDate: "",
+      });
     } catch (e) {
-      console.warn("Create project failed:", e?.message || e);
+      alert("Не вдалося створити проєкт: " + (e?.message || e));
     }
-  }
+  };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-4 rounded-lg shadow mb-6">
-      <h2 className="text-lg font-semibold mb-3">Створити новий проєкт</h2>
+    <form onSubmit={handleSubmit} className="space-y-4">
       <input
         type="text"
+        name="name"
         placeholder="Назва"
-        value={form.name}
-        onChange={(e) => setForm({ ...form, name: e.target.value })}
-        className="border p-2 w-full mb-3 rounded"
+        value={formData.name}
+        onChange={handleChange}
         required
+        className="w-full p-2 border border-gray-300 rounded bg-white"
       />
-      <textarea
-        placeholder="Опис (необов’язково)"
-        value={form.description}
-        onChange={(e) => setForm({ ...form, description: e.target.value })}
-        className="border p-2 w-full mb-3 rounded"
+
+      <input
+        type="text"
+        name="description"
+        placeholder="Опис (необов'язково)"
+        value={formData.description}
+        onChange={handleChange}
+        className="w-full p-2 border border-gray-300 rounded bg-white"
       />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-        <div>
-          <label className="block mb-1 text-sm">Статус</label>
-          <select
-            className="border p-2 w-full rounded"
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value })}
-            required
-          >
-            <option value="active">active</option>
-            <option value="on_hold">on_hold</option>
-            <option value="completed">completed</option>
-          </select>
-        </div>
-        <div>
-          <label className="block mb-1 text-sm">Початок</label>
-          <input
-            type="datetime-local"
-            className="border p-2 w-full rounded"
-            value={form.startDate}
-            onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="block mb-1 text-sm">Кінець (необов’язково)</label>
-          <input
-            type="datetime-local"
-            className="border p-2 w-full rounded"
-            value={form.endDate}
-            onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-          />
-        </div>
+
+      <div className="flex flex-col md:flex-row gap-4">
+        <select
+          name="status"
+          value={formData.status}
+          onChange={handleChange}
+          className="w-full md:w-1/3 p-2 border border-gray-300 rounded bg-white cursor-pointer"
+        >
+          <option value="active">active</option>
+          <option value="on_hold">on_hold</option>
+          <option value="archived">archived</option>
+        </select>
+
+        <input
+          type="date"
+          name="startDate"
+          value={formData.startDate}
+          onChange={handleChange}
+          className="w-full md:w-1/3 p-2 border border-gray-300 rounded bg-white "
+        />
+
+        <input
+          type="date"
+          name="endDate"
+          value={formData.endDate}
+          onChange={handleChange}
+          className="w-full md:w-1/3 p-2 border border-gray-300 rounded bg-white "
+        />
       </div>
-      <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-        Додати проєкт
+
+      <button
+        type="submit"
+        className="w-full bg-orange-400 hover:bg-orange-500 text-white font-semibold py-2 px-4 rounded cursor-pointer transition"
+      >
+        Створити проєкт
       </button>
     </form>
   );
-}
+};
 
 ProjectCreateForm.propTypes = {
-  managerId: PropTypes.string,
   onCreated: PropTypes.func,
 };
+
+export default ProjectCreateForm;

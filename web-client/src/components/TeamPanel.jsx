@@ -20,7 +20,6 @@ export default function TeamPanel({ project }) {
   const [email, setEmail] = useState("");
   const [teamId, setTeamId] = useState(project.teamId || null);
 
-  // 🧭 Завантаження учасників команди
   useEffect(() => {
     if (teamId) fetchMembers();
   }, [teamId]);
@@ -29,7 +28,6 @@ export default function TeamPanel({ project }) {
     try {
       const res = await getTeamMembers(teamId);
       const base = res.memberships || [];
-      // Збагачуємо ім’я користувача, якщо воно порожнє
       const enriched = await Promise.all(
         base.map(async (m) => {
           if (!m.userName && m.userId) {
@@ -49,14 +47,17 @@ export default function TeamPanel({ project }) {
       return enriched;
     } catch (err) {
       console.warn("Помилка отримання учасників:", err?.message || err);
-      // уникаємо дублювання тостів; тихо провалюємось і показуємо порожній список
       return [];
     }
   }
 
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  async function fetchMembersWithRetry(expectedMin = null, attempts = 5, waitMs = 600) {
+  async function fetchMembersWithRetry(
+    expectedMin = null,
+    attempts = 5,
+    waitMs = 600
+  ) {
     for (let i = 0; i < attempts; i++) {
       const list = await fetchMembers();
       if (expectedMin == null || list.length >= expectedMin) return list;
@@ -65,7 +66,6 @@ export default function TeamPanel({ project }) {
     return members;
   }
 
-  // 🧱 Створити команду для проєкту (якщо ще не існує)
   async function handleCreateTeam() {
     try {
       const newTeam = await createTeam(project.name);
@@ -73,7 +73,6 @@ export default function TeamPanel({ project }) {
       try {
         await updateProject(project.$id, { teamId: newTeam.$id });
       } catch (err) {
-        // If schema is missing teamId, attempt to create attribute and retry once
         const msg = err?.message || "";
         if (
           /Unknown attribute:\s*"teamId"/i.test(msg) ||
@@ -81,7 +80,6 @@ export default function TeamPanel({ project }) {
         ) {
           const ok = await ensureProjectsTeamIdAttribute();
           if (ok) {
-            // small delay to let attribute become available
             await new Promise((r) => setTimeout(r, 800));
             await updateProject(project.$id, { teamId: newTeam.$id });
           } else {
@@ -91,7 +89,6 @@ export default function TeamPanel({ project }) {
           throw err;
         }
       }
-      // додати право читання для всієї команди до документа проекту
       try {
         await addTeamReadPermission(project, newTeam.$id);
       } catch (e) {
@@ -100,8 +97,6 @@ export default function TeamPanel({ project }) {
           e?.message || e
         );
       }
-      // Після створення одразу підтягнемо учасників (щоб показати owner з ім'ям)
-      // Після створення одразу підтягнемо учасників з ретраями (очікуємо власника)
       await fetchMembersWithRetry(1);
       toast.success("✅ Команду створено та прив'язано до проєкту");
     } catch (err) {
@@ -110,7 +105,6 @@ export default function TeamPanel({ project }) {
     }
   }
 
-  // ✉️ Запросити користувача
   async function handleInvite(e) {
     e.preventDefault();
     if (!teamId) {
@@ -127,14 +121,10 @@ export default function TeamPanel({ project }) {
     try {
       await doInvite();
       setEmail("");
-      // Після створення membership дочекаємось появи нового учасника
       await fetchMembersWithRetry((members?.length || 0) + 1);
-    } catch {
-      // no-op — тости вже показані
-    }
+    } catch {}
   }
 
-  // ❌ Видалити користувача
   async function handleRemove(memberId) {
     const member = (members || []).find((m) => m.$id === memberId);
     const isOwner = (member?.roles || []).includes("owner");
@@ -169,7 +159,6 @@ export default function TeamPanel({ project }) {
       };
     };
     const mapped = (members || []).map(withDisplay);
-    // owner першим
     return mapped.sort((a, b) =>
       a._isOwner === b._isOwner ? 0 : a._isOwner ? -1 : 1
     );
@@ -182,28 +171,26 @@ export default function TeamPanel({ project }) {
       {!teamId ? (
         <button
           onClick={handleCreateTeam}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 cursor-pointer"
         >
           Створити команду
         </button>
       ) : (
         <>
-          {/* 📧 Форма запрошення */}
           <form onSubmit={handleInvite} className="flex gap-2 mb-4">
             <input
               type="email"
               placeholder="Email користувача"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="border p-2 rounded flex-1"
+              className="border p-2 rounded flex-1 bg-white"
               required
             />
-            <button className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+            <button className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 cursor-pointer">
               Запросити
             </button>
           </form>
 
-          {/* 📋 Список учасників */}
           {orderedMembers.length > 0 ? (
             <ol className="space-y-2 list-decimal ml-5">
               {orderedMembers.map((m) => (
@@ -215,7 +202,7 @@ export default function TeamPanel({ project }) {
                   {!(m.roles || []).includes("owner") && (
                     <button
                       onClick={() => handleRemove(m.$id)}
-                      className="ml-auto bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                      className="ml-auto bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 cursor-pointer"
                     >
                       Видалити
                     </button>

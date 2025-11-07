@@ -13,7 +13,7 @@ export default function Register() {
       await registerUser(data.email, data.password, data.name);
       navigate("/dashboard");
     } catch (err) {
-      alert("Registration error: " + err.message);
+      alert("Помилка реєстрації: " + err.message);
     }
   };
 
@@ -24,43 +24,59 @@ export default function Register() {
   }, [user, loading, navigate]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-50">
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="bg-white p-6 rounded-lg shadow-md w-80"
-      >
-        <h2 className="text-2xl font-semibold mb-4 text-center">Create account</h2>
-        <input
-          {...register("name")}
-          placeholder="Name"
-          className="border p-2 w-full mb-3"
-          required
-        />
-        <input
-          {...register("email")}
-          placeholder="Email"
-          type="email"
-          className="border p-2 w-full mb-3"
-          required
-        />
-        <input
-          {...register("password")}
-          placeholder="Password"
-          type="password"
-          className="border p-2 w-full mb-3"
-          required
-        />
-        <button className="bg-blue-500 text-white w-full py-2 rounded hover:bg-blue-600">
-          Sign Up
-        </button>
-        <p className="text-center mt-3 text-sm">
-          Already have an account?{" "}
-          <Link to="/login" className="text-blue-500">
-            Sign In
+    <div className="relative h-screen w-screen flex items-center justify-center">
+      <img
+        src="assets/hero-login.png"
+        alt="Hero Background"
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+      <div className="absolute inset-0 bg-black opacity-10" />
+
+      <div className="relative z-10 max-w-md w-full p-8 bg-white rounded-lg shadow-lg">
+        <div className="flex items-center justify-center mb-6">
+          <img src="assets/logo.svg" alt="TaskFlow Logo" className="w-28" />
+        </div>
+
+        <h2 className="text-2xl font-semibold text-center text-very-dark-blue mb-4">
+          Створити акаунт
+        </h2>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <input
+            {...register("name")}
+            placeholder="Ім’я"
+            className="border border-grayish-blue p-3 w-full rounded focus:outline-none focus:ring-2 focus:ring-orange"
+            required
+          />
+          <input
+            {...register("email")}
+            placeholder="Електронна пошта"
+            type="email"
+            className="border border-grayish-blue p-3 w-full rounded focus:outline-none focus:ring-2 focus:ring-orange"
+            required
+          />
+          <input
+            {...register("password")}
+            placeholder="Пароль"
+            type="password"
+            className="border border-grayish-blue p-3 w-full rounded focus:outline-none focus:ring-2 focus:ring-orange"
+            required
+          />
+          <button
+            type="submit"
+            className="w-full bg-orange text-white py-3 rounded hover:bg-orange/90 transition-colors cursor-pointer"
+          >
+            Зареєструватись
+          </button>
+        </form>
+
+        <p className="text-center mt-4 text-sm text-dark-grayish-blue">
+          Вже маєте акаунт?{" "}
+          <Link to="/login" className="text-orange font-medium hover:underline">
+            Увійти
           </Link>
         </p>
-      </form>
+      </div>
     </div>
   );
 }
-

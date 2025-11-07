@@ -1,4 +1,3 @@
-// src/components/TasksPanel.jsx
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import PropTypes from "prop-types";
@@ -8,7 +7,6 @@ import TaskCreateForm from "./TaskCreateForm";
 import TaskEditForm from "./TaskEditForm";
 import TaskFilters from "./TaskFilters";
 import TaskItem from "./TaskItem";
-import ProjectDeleteButton from "./ProjectDeleteButton";
 
 export default function TasksPanel({ projectId }) {
   const { user } = useAuth();
@@ -31,12 +29,11 @@ export default function TasksPanel({ projectId }) {
     setFilterPriority,
     sortBy,
     setSortBy,
+    searchText,
+    setSearchText,
     filteredTasks,
   } = useTaskFilters(tasks);
 
-  /* =====================================================
-      CREATE
-  ====================================================== */
   async function handleCreate(e) {
     e.preventDefault();
     try {
@@ -51,9 +48,6 @@ export default function TasksPanel({ projectId }) {
     } catch {}
   }
 
-  /* =====================================================
-      UPDATE
-  ====================================================== */
   async function handleUpdate(e) {
     e.preventDefault();
     try {
@@ -62,9 +56,6 @@ export default function TasksPanel({ projectId }) {
     } catch {}
   }
 
-  /* =====================================================
-      DELETE
-  ====================================================== */
   async function handleDelete(id) {
     if (!confirm("Видалити завдання?")) return;
     try {
@@ -72,17 +63,14 @@ export default function TasksPanel({ projectId }) {
     } catch {}
   }
 
-  /* =====================================================
-      RENDER
-  ====================================================== */
   return (
     <div className="bg-gray-100 p-4 rounded-lg mt-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold">Завдання</h3>
-        <ProjectDeleteButton projectId={projectId} />
-      </div>
+      <TaskCreateForm
+        newTask={newTask}
+        setNewTask={setNewTask}
+        onSubmit={handleCreate}
+      />
 
-      {/* Фільтри */}
       <TaskFilters
         filterStatus={filterStatus}
         setFilterStatus={setFilterStatus}
@@ -90,18 +78,11 @@ export default function TasksPanel({ projectId }) {
         setFilterPriority={setFilterPriority}
         sortBy={sortBy}
         setSortBy={setSortBy}
+        searchText={searchText}
+        setSearchText={setSearchText}
       />
 
-      {/* Створення */}
-      <TaskCreateForm
-        newTask={newTask}
-        setNewTask={setNewTask}
-        onSubmit={handleCreate}
-      />
-
-      {/* Відображення */}
       {editingTask ? (
-        /* Редагування */
         <TaskEditForm
           editingTask={editingTask}
           setEditingTask={setEditingTask}
@@ -121,7 +102,7 @@ export default function TasksPanel({ projectId }) {
         </div>
       ) : (
         <p className="text-gray-500 text-center">
-          Немає завдань за вибраними параметрами
+          Немає завдань для відображення
         </p>
       )}
     </div>

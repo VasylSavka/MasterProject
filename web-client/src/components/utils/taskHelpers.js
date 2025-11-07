@@ -22,10 +22,20 @@ export async function enrichTasks(tasks) {
   return Promise.all(tasks.map((t) => enrichTask(t)));
 }
 
-export function computeFilteredSortedTasks(tasks, { status = "all", priority = "all", sortBy = "created" }) {
+export function computeFilteredSortedTasks(
+  tasks,
+  { status = "all", priority = "all", sortBy = "created", search = "" }
+) {
+  const q = (search || "").toLowerCase().trim();
   const filtered = (tasks || [])
     .filter((t) => (status === "all" ? true : t.status === status))
-    .filter((t) => (priority === "all" ? true : t.priority === priority));
+    .filter((t) => (priority === "all" ? true : t.priority === priority))
+    .filter((t) => {
+      if (!q) return true;
+      const title = (t.title || "").toLowerCase();
+      const desc = (t.description || "").toLowerCase();
+      return title.includes(q) || desc.includes(q);
+    });
 
   const sorted = [...filtered].sort((a, b) => {
     if (sortBy === "priority") {
@@ -39,4 +49,3 @@ export function computeFilteredSortedTasks(tasks, { status = "all", priority = "
 
   return sorted;
 }
-

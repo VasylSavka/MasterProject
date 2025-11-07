@@ -28,9 +28,6 @@ export default function Teams() {
   const [expandedTeam, setExpandedTeam] = useState(null);
   const [inviteEmail, setInviteEmail] = useState("");
 
-  /* ===========================================================
-     LOAD PROJECTS + TEAMS + MEMBERS
-  ============================================================ */
   async function enrichMemberships(memberships) {
     const base = memberships || [];
     const rich = await Promise.all(
@@ -57,7 +54,6 @@ export default function Teams() {
         const allTeams = teamRes.teams || teamRes.documents || [];
         setTeams(allTeams);
 
-        // Load projects (own + team projects)
         const own = await getProjects(user.$id).catch(() => ({
           documents: [],
         }));
@@ -70,13 +66,11 @@ export default function Teams() {
         const combined = [...(own.documents || [])];
         projectSets.forEach((r) => combined.push(...(r.documents || [])));
 
-        // Unique
         const map = new Map();
         combined.forEach((p) => map.set(p.$id, p));
 
         setProjects([...map.values()]);
 
-        // Load members per team (with enriched names)
         const entries = await Promise.all(
           allTeams.map(async (t) => {
             try {
@@ -95,9 +89,6 @@ export default function Teams() {
     })();
   }, [user.$id]);
 
-  /* ===========================================================
-     CREATE TEAM FOR A PROJECT
-  ============================================================ */
   async function handleCreateTeamForProject(e) {
     e.preventDefault();
     if (!creatingFor) return;
@@ -110,7 +101,6 @@ export default function Teams() {
 
     toast.success("✅ Команду створено!");
 
-    // refresh projects and teams, and fetch members for the new team (owner should be present)
     const [projRes, teamRes, membersRes] = await Promise.all([
       getProjects(user.$id).catch(() => ({ documents: [] })),
       listTeams().catch(() => ({ teams: [] })),
@@ -127,9 +117,6 @@ export default function Teams() {
     setExpandedTeam(team.$id);
   }
 
-  /* ===========================================================
-     INVITE MEMBER
-  ============================================================ */
   async function handleInvite(teamId) {
     if (!inviteEmail.trim()) return;
 
@@ -145,7 +132,6 @@ export default function Teams() {
       await promise;
       setInviteEmail("");
 
-      // reload members and also refresh projects/teams to keep mapping consistent
       const [mRes, projRes, teamRes] = await Promise.all([
         getTeamMembers(teamId).catch(() => ({ memberships: [] })),
         getProjects(user.$id).catch(() => ({ documents: [] })),
@@ -160,11 +146,10 @@ export default function Teams() {
     }
   }
 
-  /* ===========================================================
-     REMOVE MEMBER
-  ============================================================ */
   async function handleRemove(teamId, memberId) {
-    const member = (membersByTeam[teamId] || []).find((m) => m.$id === memberId);
+    const member = (membersByTeam[teamId] || []).find(
+      (m) => m.$id === memberId
+    );
     if ((member?.roles || []).includes("owner")) {
       toast.error("Неможливо видалити власника команди");
       return;
@@ -181,7 +166,6 @@ export default function Teams() {
 
     try {
       await promise;
-      // reload members and refresh mapping
       const [mRes, projRes] = await Promise.all([
         getTeamMembers(teamId).catch(() => ({ memberships: [] })),
         getProjects(user.$id).catch(() => ({ documents: [] })),
@@ -194,9 +178,6 @@ export default function Teams() {
     }
   }
 
-  /* ===========================================================
-     MAP: TEAM → PROJECT
-  ============================================================ */
   const projectByTeam = useMemo(() => {
     const map = new Map();
     projects.forEach((p) => {
@@ -205,23 +186,15 @@ export default function Teams() {
     return map;
   }, [projects]);
 
-  // Projects that have no team or reference a non-existent/deleted team
   const projectsWithoutTeam = useMemo(() => {
     const teamIds = new Set(teams.map((t) => t.$id));
     return projects.filter((p) => !p.teamId || !teamIds.has(p.teamId));
   }, [projects, teams]);
 
-  /* ===========================================================
-     RENDER
-  ============================================================ */
-
   if (loading) return <p className="text-gray-500">Завантаження...</p>;
 
   return (
     <div className="space-y-6">
-      {/* =======================================================
-          CREATE TEAM FOR PROJECT
-      ======================================================== */}
       <div className="bg-white p-4 rounded-lg shadow">
         <h3 className="text-lg font-semibold mb-3">
           Створити команду для проєкту
@@ -237,7 +210,7 @@ export default function Teams() {
             <select
               value={creatingFor}
               onChange={(e) => setCreatingFor(e.target.value)}
-              className="border p-2 rounded flex-1"
+              className="border p-2 rounded flex-1 bg- cursor-pointer"
             >
               <option value="">Оберіть проєкт</option>
               {projectsWithoutTeam.map((p) => (
@@ -247,142 +220,136 @@ export default function Teams() {
               ))}
             </select>
 
-            <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+            <button className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded transition-colors duration-200 cursor-pointer shadow-sm">
               Створити
             </button>
           </form>
         )}
       </div>
 
-      {/* =======================================================
-          TEAMS LIST
-      ======================================================== */}
       <div className="space-y-4">
         {teams.length === 0 ? (
           <p className="text-gray-500 text-center">Команд ще немає</p>
         ) : (
-          // Показуємо лише команди, що прив'язані до проєктів
-          teams.filter((t) => projectByTeam.has(t.$id)).map((t) => {
-            const project = projectByTeam.get(t.$id);
-            const members = membersByTeam[t.$id] || [];
+          teams
+            .filter((t) => projectByTeam.has(t.$id))
+            .map((t) => {
+              const project = projectByTeam.get(t.$id);
+              const members = membersByTeam[t.$id] || [];
 
-            const sortedMembers = [...members].sort((a, b) => {
-              const ao = (a.roles || []).includes("owner");
-              const bo = (b.roles || []).includes("owner");
-              return ao === bo ? 0 : ao ? -1 : 1;
-            });
+              const sortedMembers = [...members].sort((a, b) => {
+                const ao = (a.roles || []).includes("owner");
+                const bo = (b.roles || []).includes("owner");
+                return ao === bo ? 0 : ao ? -1 : 1;
+              });
 
-            const owner = sortedMembers.find((m) =>
-              (m.roles || []).includes("owner")
-            );
-            const ownerName =
-              owner?.userName ||
-              owner?.userEmail ||
-              (owner?.userId ? `Користувач ${owner.userId.slice(-6)}` : "—");
+              const owner = sortedMembers.find((m) =>
+                (m.roles || []).includes("owner")
+              );
+              const ownerName =
+                owner?.userName ||
+                owner?.userEmail ||
+                (owner?.userId ? `Користувач ${owner.userId.slice(-6)}` : "—");
 
-            const isOpen = expandedTeam === t.$id;
+              const isOpen = expandedTeam === t.$id;
 
-            return (
-              <div key={t.$id} className="bg-white p-4 rounded-lg shadow">
-                {/* HEADER */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-lg font-semibold">{t.name}</h4>
+              return (
+                <div key={t.$id} className="bg-white p-4 rounded-lg shadow">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-lg font-semibold">{t.name}</h4>
 
-                    <p className="text-sm text-gray-500">
-                      Власник: {owner ? `${ownerName} (owner)` : "—"}
-                    </p>
-
-                    {project ? (
                       <p className="text-sm text-gray-500">
-                        Проєкт:{" "}
-                        <Link
-                          to={`/dashboard/projects/${project.$id}`}
-                          className="text-blue-600 hover:underline"
-                        >
-                          {project.name}
-                        </Link>
+                        Власник: {owner ? `${ownerName} (owner)` : "—"}
                       </p>
-                    ) : (
-                      <p className="text-sm text-gray-500">
-                        Не прив’язано до проєкту
-                      </p>
-                    )}
-                  </div>
 
-                  <button
-                    onClick={() => setExpandedTeam(isOpen ? null : t.$id)}
-                    className="bg-gray-800 text-white px-3 py-1.5 rounded hover:bg-black"
-                  >
-                    {isOpen ? "Закрити" : "Керувати"}
-                  </button>
-                </div>
-
-                {/* EXPANDED PANEL */}
-                {isOpen && (
-                  <div className="mt-4 p-4 bg-gray-50 border rounded-lg">
-                    {/* Invite */}
-                    <div className="flex gap-2 mb-4">
-                      <input
-                        type="email"
-                        placeholder="Email користувача"
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                        className="border p-2 rounded flex-1"
-                      />
-                      <button
-                        onClick={() => handleInvite(t.$id)}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                      >
-                        Запросити
-                      </button>
+                      {project ? (
+                        <p className="text-sm text-gray-500">
+                          Проєкт:{" "}
+                          <Link
+                            to={`/dashboard/projects/${project.$id}`}
+                            className="text-orange-500 hover:underline"
+                          >
+                            {project.name}
+                          </Link>
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          Не прив’язано до проєкту
+                        </p>
+                      )}
                     </div>
 
-                    {/* Members */}
-                    <h4 className="font-semibold mb-2">Учасники:</h4>
-
-                    {sortedMembers.length === 0 ? (
-                      <p className="text-gray-500">Немає учасників</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {sortedMembers.map((m) => {
-                          const mName =
-                            m.userName ||
-                            m.userEmail ||
-                            (m.userId
-                              ? `Користувач ${m.userId.slice(-6)}`
-                              : "—");
-                          const role = (m.roles || []).includes("owner")
-                            ? "owner"
-                            : "member";
-
-                          return (
-                            <li
-                              key={m.$id}
-                              className="flex items-center bg-white p-2 rounded shadow"
-                            >
-                              <span>
-                                {mName} ({role})
-                              </span>
-
-                              {role !== "owner" && (
-                                <button
-                                  onClick={() => handleRemove(t.$id, m.$id)}
-                                  className="ml-auto bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                                >
-                                  Видалити
-                                </button>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
+                    <button
+                      onClick={() => setExpandedTeam(isOpen ? null : t.$id)}
+                      className="bg-gray-800 text-white px-3 py-1.5 rounded hover:bg-black cursor-pointer"
+                    >
+                      {isOpen ? "Закрити" : "Керувати"}
+                    </button>
                   </div>
-                )}
-              </div>
-            );
-          })
+
+                  {isOpen && (
+                    <div className="mt-4 p-4 bg-gray-50 border rounded-lg">
+                      <div className="flex gap-2 mb-4">
+                        <input
+                          type="email"
+                          placeholder="Email користувача"
+                          value={inviteEmail}
+                          onChange={(e) => setInviteEmail(e.target.value)}
+                          className="border p-2 rounded flex-1"
+                        />
+                        <button
+                          onClick={() => handleInvite(t.$id)}
+                          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 cursor-pointer"
+                        >
+                          Запросити
+                        </button>
+                      </div>
+
+                      <h4 className="font-semibold mb-2">Учасники:</h4>
+
+                      {sortedMembers.length === 0 ? (
+                        <p className="text-gray-500">Немає учасників</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {sortedMembers.map((m) => {
+                            const mName =
+                              m.userName ||
+                              m.userEmail ||
+                              (m.userId
+                                ? `Користувач ${m.userId.slice(-6)}`
+                                : "—");
+                            const role = (m.roles || []).includes("owner")
+                              ? "owner"
+                              : "member";
+
+                            return (
+                              <li
+                                key={m.$id}
+                                className="flex items-center bg-white p-2 rounded shadow"
+                              >
+                                <span>
+                                  {mName} ({role})
+                                </span>
+
+                                {role !== "owner" && (
+                                  <button
+                                    onClick={() => handleRemove(t.$id, m.$id)}
+                                    className="ml-auto bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 cursor-pointer"
+                                  >
+                                    Видалити
+                                  </button>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
         )}
       </div>
     </div>

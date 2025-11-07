@@ -1,164 +1,149 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { getProjects, getProjectsByTeam } from "../appwrite/database";
-import { listTeams } from "../appwrite/teams";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ProjectCreateForm from "../components/ProjectCreateForm";
+import { useAuth } from "../context/AuthContext";
+import { getProjects } from "../appwrite/database";
 
-export default function DashboardHome() {
+const DashboardHome = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // Створення форми винесено у ProjectCreateForm
-
-  // ✅ Нові фільтри
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [sortBy, setSortBy] = useState("created");
-
-  async function loadAll() {
-    // Власні проєкти
-    const own = await getProjects(user.$id).catch(() => ({ documents: [] }));
-
-    // Команди
-    const tRes = await listTeams().catch(() => ({ teams: [] }));
-    const userTeams = tRes.teams || tRes.documents || [];
-
-    // Проєкти команд
-    const teamProjectsSets = await Promise.all(
-      userTeams.map((t) => getProjectsByTeam(t.$id).catch(() => ({ documents: [] })))
-    );
-    const teamProjects = [];
-    teamProjectsSets.forEach((r) => teamProjects.push(...(r.documents || [])));
-
-    // Унікалізація (Map по id)
-    const byId = new Map();
-    [...(own.documents || []), ...teamProjects].forEach((p) => byId.set(p.$id, p));
-    setProjects([...byId.values()]);
-  }
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortOption, setSortOption] = useState("newest");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    (async () => {
+    let mounted = true;
+    async function load() {
+      if (!user?.$id) return;
       try {
-        await loadAll();
-      } finally {
-        setLoading(false);
+        const res = await getProjects(user.$id);
+        if (mounted) setProjects(res.documents || []);
+      } catch (e) {
+        console.warn("Failed to load projects", e?.message || e);
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.$id]);
-
-  // Створення проєкту обробляє ProjectCreateForm; після успіху викликаємо loadAll
-
-  // ✅ Комбінована фільтрація
-  const visible = useMemo(() => {
-    let list = [...projects];
-
-    // ✅ Фільтр по статусу
-    if (filterStatus !== "all") {
-      list = list.filter((p) => p.status === filterStatus);
     }
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.$id]);
 
-    // ✅ Пошук по назві
-    if (searchTerm.trim().length > 0) {
-      list = list.filter((p) =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+  const getCreatedTime = (p) => {
+    const d = p.createdAt || p.$createdAt || p.startDate;
+    return d ? new Date(d).getTime() : 0;
+  };
 
-    // ✅ Сортування
-    return list.sort((a, b) => {
-      if (sortBy === "name") return a.name.localeCompare(b.name);
-      if (sortBy === "start")
-        return new Date(a.startDate) - new Date(b.startDate);
-      return new Date(b.$createdAt) - new Date(a.$createdAt); // created desc
-    });
-  }, [projects, filterStatus, sortBy, searchTerm]);
+  const sorters = {
+    newest: (a, b) => getCreatedTime(b) - getCreatedTime(a),
+    oldest: (a, b) => getCreatedTime(a) - getCreatedTime(b),
+    name: (a, b) => (a.name || "").localeCompare(b.name || ""),
+  };
 
-  if (loading)
-    return <p className="text-gray-500 text-center">Завантаження...</p>;
+  const filteredProjects = projects
+    .filter((p) => (statusFilter ? p.status === statusFilter : true))
+    .filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort(sorters[sortOption] || sorters.newest);
 
   return (
-    <div className="w-full">
-      {/* Create project */}
-      <div className="mx-auto max-w-3xl">
-        <ProjectCreateForm managerId={user?.$id} onCreated={loadAll} />
-        {/* ✅ Фільтри */}
-        <div className="bg-white p-4 rounded-lg shadow mb-4 space-y-3">
-          {/* 🔍 Пошук */}
-          <div>
-            <input
-              type="text"
-              placeholder="Пошук проєкту..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border p-2 rounded w-full"
+    <div className="space-y-8">
+      <div className="bg-[#fff3dc] p-6 rounded-lg shadow-md w-full max-w-4xl mx-auto">
+        <h2 className="text-2xl font-bold text-center text-gray-900 mb-4">
+          Створити новий проєкт
+        </h2>
+        <ProjectCreateForm
+          onCreated={() => {
+            if (!user?.$id) return;
+            getProjects(user.$id)
+              .then((res) => setProjects(res.documents || []))
+              .catch(() => {});
+          }}
+        />
+      </div>
+
+      <div className="max-w-4xl mx-auto bg-white/80 backdrop-blur-sm p-4 md:p-5 rounded-lg shadow-md border border-black/5">
+        <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-4">
+          <input
+            type="text"
+            placeholder="Пошук проєктів..."
+            className="w-full p-2 border border-gray-300 rounded bg-white"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+
+          <div className="flex justify-center">
+            <img
+              src="assets/taskflow_icon.svg"
+              alt="TaskFlow"
+              className="h-10 w-10 object-contain"
             />
           </div>
 
-          {/* ✅ Існуючі фільтри та сортування */}
-          <div className="flex flex-col sm:flex-row items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Статус:</span>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="border p-2 rounded"
-              >
-                <option value="all">всі</option>
-                <option value="active">active</option>
-                <option value="on_hold">on_hold</option>
-                <option value="completed">completed</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Сортувати:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="border p-2 rounded"
-              >
-                <option value="created">новіші</option>
-                <option value="start">за початком</option>
-                <option value="name">за назвою</option>
-              </select>
-            </div>
+          <div className="flex gap-2 w-full md:w-auto justify-end">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="p-2 border border-gray-300 rounded bg-white cursor-pointer"
+            >
+              <option value="">All</option>
+              <option value="active">Active</option>
+              <option value="on_hold">On Hold</option>
+              <option value="completed">Сompleted</option>
+            </select>
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+              className="p-2 border border-gray-300 rounded bg-white cursor-pointer"
+            >
+              <option value="newest">Найновіші</option>
+              <option value="oldest">Найстаріші</option>
+              <option value="name">За назвою (А→Я)</option>
+            </select>
           </div>
         </div>
+      </div>
 
-        {/* ✅ Список проєктів */}
-        <div className="grid gap-4">
-          {visible.length > 0 ? (
-            visible.map((p) => (
-              <div
-                key={p.$id}
-                className="bg-white p-4 rounded-lg shadow flex justify-between items-center"
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        {filteredProjects.map((project) => (
+          <div
+            key={project.$id}
+            onClick={() => navigate(`/dashboard/projects/${project.$id}`)}
+            className="cursor-pointer bg-white hover:shadow-lg transition p-4 rounded-lg shadow flex flex-col"
+          >
+            <h3 className="text-lg font-bold text-gray-900">{project.name}</h3>
+            <p className="text-sm text-gray-600">{project.description}</p>
+            <div className="mt-2 text-sm text-gray-700 flex flex-wrap gap-2 items-center">
+              <span
+                className={`text-white text-xs font-semibold px-2 py-1 rounded ${
+                  project.status === "active"
+                    ? "bg-green-600"
+                    : project.status === "on_hold"
+                      ? "bg-yellow-600"
+                      : project.status === "archived"
+                        ? "bg-gray-600"
+                        : "bg-gray-400"
+                }`}
               >
-                <div>
-                  <h3 className="font-semibold text-lg">{p.name}</h3>
-                  <p className="text-gray-600 line-clamp-2">{p.description}</p>
-                  <p className="text-sm text-gray-400">
-                    Статус: {p.status} | Початок:{" "}
-                    {new Date(p.startDate).toLocaleDateString()} | Кінець:{" "}
-                    {p.endDate ? new Date(p.endDate).toLocaleDateString() : "—"}
-                  </p>
-                </div>
-                <Link
-                  to={`/dashboard/projects/${p.$id}`}
-                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-                >
-                  Відкрити
-                </Link>
-              </div>
-            ))
-          ) : (
-            <p className="text-gray-500 text-center">Немає проєктів</p>
-          )}
-        </div>
+                {project.status.toUpperCase()}
+              </span>
+              <span>
+                Початок:{" "}
+                {project.startDate
+                  ? new Date(project.startDate).toLocaleDateString()
+                  : "—"}
+              </span>
+              <span>
+                Кінець:{" "}
+                {project.endDate
+                  ? new Date(project.endDate).toLocaleDateString()
+                  : "—"}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
-}
+};
+
+export default DashboardHome;

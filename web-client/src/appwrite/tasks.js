@@ -1,4 +1,3 @@
-// src/appwrite/tasks.js
 import { ID, Permission, Role, Query } from "appwrite";
 import { databases as db } from "./client";
 import { databaseId, tasksCollectionId } from "./database";
@@ -11,9 +10,6 @@ function ensure() {
   return true;
 }
 
-/* =====================================================
-   GET TASKS FOR PROJECT
-===================================================== */
 export async function getTasks(projectId) {
   if (!ensure() || !projectId) return { documents: [] };
   return await db.listDocuments(databaseId, tasksCollectionId, [
@@ -22,9 +18,6 @@ export async function getTasks(projectId) {
   ]);
 }
 
-/* =====================================================
-   CREATE TASK (with createdBy and permissions)
-===================================================== */
 export async function createTask({
   title,
   description,
@@ -42,7 +35,6 @@ export async function createTask({
     description,
     status,
     priority,
-    // Normalize empty string to null to avoid invalid datetime values
     dueDate: dueDate || null,
     projectId,
     assigneeId,
@@ -65,13 +57,9 @@ export async function createTask({
   );
 }
 
-/* =====================================================
-   UPDATE TASK (with updatedBy)
-===================================================== */
 export async function updateTask(id, updates, updatedBy = null) {
   if (!ensure()) return;
 
-  // Whitelist fields to avoid sending system/computed props like $id, $createdAt, _createdName
   const allowed = [
     "title",
     "description",
@@ -84,7 +72,6 @@ export async function updateTask(id, updates, updatedBy = null) {
   const patch = {};
   for (const key of allowed) {
     if (Object.prototype.hasOwnProperty.call(updates, key)) {
-      // Normalize empty dueDate to null
       patch[key] = key === "dueDate" && !updates[key] ? null : updates[key];
     }
   }
@@ -93,9 +80,6 @@ export async function updateTask(id, updates, updatedBy = null) {
   return await db.updateDocument(databaseId, tasksCollectionId, id, patch);
 }
 
-/* =====================================================
-   DELETE TASK
-===================================================== */
 export async function deleteTask(id) {
   if (!ensure()) return;
   return await db.deleteDocument(databaseId, tasksCollectionId, id);

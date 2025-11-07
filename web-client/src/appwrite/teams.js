@@ -1,8 +1,6 @@
-// src/appwrite/teams.js
 import { Teams, ID } from "appwrite";
 import client from "./client";
 
-// Centralized admin config (for REST calls)
 const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT;
 const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID;
 const apiKey = import.meta.env.VITE_APPWRITE_API_KEY;
@@ -18,9 +16,6 @@ const adminHeaders =
 
 const teams = new Teams(client);
 
-/* =====================================================
-   CREATE TEAM
-===================================================== */
 export async function createTeam(name) {
   try {
     return await teams.create(ID.unique(), name);
@@ -30,9 +25,6 @@ export async function createTeam(name) {
   }
 }
 
-/* =====================================================
-   LIST TEAMS
-===================================================== */
 export async function listTeams() {
   try {
     return await teams.list();
@@ -42,9 +34,6 @@ export async function listTeams() {
   }
 }
 
-/* =====================================================
-   LIST MEMBERS
-===================================================== */
 export async function getTeamMembers(teamId) {
   try {
     return await teams.listMemberships(teamId);
@@ -54,9 +43,6 @@ export async function getTeamMembers(teamId) {
   }
 }
 
-/* =====================================================
-   INVITE MEMBER (REST variant)
-===================================================== */
 export async function inviteMember(teamId, email, roles = ["member"]) {
   try {
     const cleanEmail = email.trim();
@@ -65,7 +51,6 @@ export async function inviteMember(teamId, email, roles = ["member"]) {
       throw new Error("Admin endpoint or headers missing");
     }
 
-    // Get all users
     const usersRes = await fetch(`${endpoint}/users`, {
       headers: adminHeaders,
     });
@@ -76,7 +61,6 @@ export async function inviteMember(teamId, email, roles = ["member"]) {
 
     const userId = user.$id || user.id;
 
-    // Create membership
     const res = await fetch(`${endpoint}/teams/${teamId}/memberships`, {
       method: "POST",
       headers: adminHeaders,
@@ -85,14 +69,16 @@ export async function inviteMember(teamId, email, roles = ["member"]) {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      // Some Appwrite setups may return 500 even though membership is created.
-      // Verify by listing memberships and checking presence.
       try {
         const verify = await getTeamMembers(teamId);
-        const exists = (verify.memberships || []).find((m) => m.userId === userId);
-        if (exists) return exists; // treat as success
+        const exists = (verify.memberships || []).find(
+          (m) => m.userId === userId
+        );
+        if (exists) return exists;
       } catch {}
-      throw new Error(data.message || `Помилка створення membership (HTTP ${res.status})`);
+      throw new Error(
+        data.message || `Помилка створення membership (HTTP ${res.status})`
+      );
     }
 
     return data;
@@ -102,9 +88,6 @@ export async function inviteMember(teamId, email, roles = ["member"]) {
   }
 }
 
-/* =====================================================
-   REMOVE MEMBER
-===================================================== */
 export async function removeMember(teamId, membershipId) {
   try {
     return await teams.deleteMembership(teamId, membershipId);
@@ -114,11 +97,7 @@ export async function removeMember(teamId, membershipId) {
   }
 }
 
-/* =====================================================
-   DELETE TEAM (admin)
-===================================================== */
 export async function deleteTeam(teamId) {
-  // Use admin REST to ensure deletion even without user session permissions
   if (!endpoint || !adminHeaders) {
     throw new Error("Admin endpoint/headers are not configured");
   }
@@ -128,19 +107,17 @@ export async function deleteTeam(teamId) {
       headers: adminHeaders,
     });
     if (res.ok) return true;
-    // Tolerate 404 (already deleted)
     if (res.status === 404) return true;
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.message || `Не вдалося видалити команду (HTTP ${res.status})`);
+    throw new Error(
+      data.message || `Не вдалося видалити команду (HTTP ${res.status})`
+    );
   } catch (err) {
     console.error("Помилка видалення команди:", err);
     throw err;
   }
 }
 
-/* =====================================================
-   CONFIRM MEMBERSHIP
-===================================================== */
 export async function confirmMembership(teamId, membershipId, userId, secret) {
   try {
     return await client.call(
@@ -155,9 +132,6 @@ export async function confirmMembership(teamId, membershipId, userId, secret) {
   }
 }
 
-/* =====================================================
-   GET USER BY ID (REST, requires apiKey)
-===================================================== */
 export async function getUserById(userId) {
   if (!endpoint || !adminHeaders) return null;
 
@@ -172,15 +146,12 @@ export async function getUserById(userId) {
   }
 }
 
-/* =====================================================
- ✅ NEW: UPDATE MEMBER ROLE (owner <-> member)
-===================================================== */
 export async function updateMemberRole(teamId, membershipId, newRole) {
   if (!endpoint || !adminHeaders) {
     throw new Error("Admin headers not configured");
   }
 
-  const roles = [newRole]; // Appwrite expects array
+  const roles = [newRole];
 
   const res = await fetch(
     `${endpoint}/teams/${teamId}/memberships/${membershipId}`,

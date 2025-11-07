@@ -30,7 +30,6 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      // Create a new session directly; avoid session APIs when unauthenticated
       await account.createEmailPasswordSession(email, password);
       await fetchUser();
     } catch (err) {
