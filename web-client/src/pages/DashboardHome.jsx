@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ProjectCreateForm from "../components/ProjectCreateForm";
 import { useAuth } from "../context/AuthContext";
-import { getProjects } from "../appwrite/database";
+import { getProjects, getProjectsByTeam } from "../appwrite/database";
+import { listTeams } from "../appwrite/teams";
 
 const DashboardHome = () => {
   const navigate = useNavigate();
@@ -14,16 +15,35 @@ const DashboardHome = () => {
 
   useEffect(() => {
     let mounted = true;
-    async function load() {
+
+    async function loadAll() {
       if (!user?.$id) return;
       try {
-        const res = await getProjects(user.$id);
-        if (mounted) setProjects(res.documents || []);
+        const [ownRes, teamRes] = await Promise.all([
+          getProjects(user.$id).catch(() => ({ documents: [] })),
+          listTeams().catch(() => ({ teams: [] })),
+        ]);
+
+        const teams = teamRes.teams || teamRes.documents || [];
+        const teamProjectsSets = await Promise.all(
+          teams.map((t) =>
+            getProjectsByTeam(t.$id).catch(() => ({ documents: [] }))
+          )
+        );
+
+        const combined = [...(ownRes.documents || [])];
+        teamProjectsSets.forEach((r) => combined.push(...(r.documents || [])));
+
+        const unique = Array.from(
+          new Map(combined.map((p) => [p.$id, p])).values()
+        );
+        if (mounted) setProjects(unique);
       } catch (e) {
         console.warn("Failed to load projects", e?.message || e);
       }
     }
-    load();
+
+    loadAll();
     return () => {
       mounted = false;
     };
@@ -52,11 +72,27 @@ const DashboardHome = () => {
           Створити новий проєкт
         </h2>
         <ProjectCreateForm
-          onCreated={() => {
-            if (!user?.$id) return;
-            getProjects(user.$id)
-              .then((res) => setProjects(res.documents || []))
-              .catch(() => {});
+          onCreated={async () => {
+            try {
+              const [ownRes, teamRes] = await Promise.all([
+                getProjects(user.$id).catch(() => ({ documents: [] })),
+                listTeams().catch(() => ({ teams: [] })),
+              ]);
+              const teams = teamRes.teams || teamRes.documents || [];
+              const teamProjectsSets = await Promise.all(
+                teams.map((t) =>
+                  getProjectsByTeam(t.$id).catch(() => ({ documents: [] }))
+                )
+              );
+              const combined = [...(ownRes.documents || [])];
+              teamProjectsSets.forEach((r) =>
+                combined.push(...(r.documents || []))
+              );
+              const unique = Array.from(
+                new Map(combined.map((p) => [p.$id, p])).values()
+              );
+              setProjects(unique);
+            } catch {}
           }}
         />
       </div>
