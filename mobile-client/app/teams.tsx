@@ -33,8 +33,10 @@ import {
   enrichMemberships,
   listUsersMap,
 } from "@/src/appwrite/teams";
+import { useRouter } from "expo-router";
 
 const TeamsScreen = () => {
+  const router = useRouter();
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -349,9 +351,20 @@ const TeamsScreen = () => {
             return (
               <View key={team.$id} style={styles.card}>
                 <Text style={styles.cardTitle}>{team.name}</Text>
-                <Text style={styles.metaText}>
-                  Проєкт: {project ? project.name : "—"}
-                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                  <Text style={styles.metaText}>Проєкт:</Text>
+                  {project ? (
+                    <TouchableOpacity
+                      onPress={() => router.push(`/projects/${project.$id}`)}
+                    >
+                      <Text style={[styles.metaText, styles.linkText]}>
+                        {project.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.metaText}>—</Text>
+                  )}
+                </View>
                 <Text style={styles.metaText}>Власник: {ownerLabel}</Text>
                 <TouchableOpacity
                   style={styles.manageButton}
@@ -495,6 +508,10 @@ const styles = {
   metaText: {
     color: "#4b5563",
     marginBottom: 4,
+  },
+  linkText: {
+    color: "#f97316",
+    fontWeight: "600",
   },
   mutedText: {
     color: "#6b7280",

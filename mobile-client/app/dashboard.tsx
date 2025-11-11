@@ -13,8 +13,25 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
 import { account } from "@/src/appwrite/client";
 import { createProject, getProjects } from "@/src/appwrite/database";
+import { useRouter } from "expo-router";
+
+const getStatusColors = (status?: string) => {
+  switch (status) {
+    case "active":
+      return { backgroundColor: "#16a34a", textColor: "#fff" };
+    case "on_hold":
+      return { backgroundColor: "#ca8a04", textColor: "#fff" };
+    case "completed":
+    case "archived":
+    case "done":
+      return { backgroundColor: "#4b5563", textColor: "#fff" };
+    default:
+      return { backgroundColor: "#e5e7eb", textColor: "#111827" };
+  }
+};
 
 const DashboardScreen = () => {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("active");
@@ -194,7 +211,7 @@ const DashboardScreen = () => {
           >
             <Picker.Item label="active" value="active" />
             <Picker.Item label="on hold" value="on hold" />
-            <Picker.Item label="done" value="done" />
+            <Picker.Item label="completed" value="completed" />
           </Picker>
 
           <View
@@ -247,10 +264,10 @@ const DashboardScreen = () => {
               onValueChange={setFilterStatus}
               style={[styles.picker, { flex: 1 }]}
             >
-              <Picker.Item label="Статус: всі" value="all" />
+              <Picker.Item label="all" value="all" />
               <Picker.Item label="active" value="active" />
               <Picker.Item label="on hold" value="on hold" />
-              <Picker.Item label="done" value="done" />
+              <Picker.Item label="completed" value="completed" />
             </Picker>
 
             <Picker
@@ -285,12 +302,38 @@ const DashboardScreen = () => {
               ? new Date(project.endDate).toLocaleDateString()
               : "—";
             return (
-              <TouchableOpacity key={project.$id} style={styles.card}>
+              <TouchableOpacity
+                key={project.$id}
+                style={styles.card}
+                onPress={() => router.push(`/projects/${project.$id}`)}
+              >
                 <Text style={styles.cardTitle}>{project.name}</Text>
                 {project.description ? (
                   <Text>{project.description}</Text>
                 ) : null}
-                <Text>Статус: {statusLabel}</Text>
+                {(() => {
+                  const statusColors = getStatusColors(project.status);
+                  return (
+                    <View style={styles.statusRow}>
+                      <Text style={styles.statusLabel}>Статус:</Text>
+                      <View
+                        style={[
+                          styles.statusPill,
+                          { backgroundColor: statusColors.backgroundColor },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusText,
+                            { color: statusColors.textColor },
+                          ]}
+                        >
+                          {statusLabel}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
                 <Text>
                   Початок: {start} | Кінець: {end}
                 </Text>
@@ -340,6 +383,25 @@ const styles = {
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 16,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginVertical: 6,
+  },
+  statusLabel: {
+    color: "#4b5563",
+  },
+  statusPill: {
+    backgroundColor: "#e5e7eb",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  statusText: {
+    color: "#111827",
+    fontWeight: "600",
   },
 };
 

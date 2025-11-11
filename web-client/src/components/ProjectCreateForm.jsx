@@ -79,7 +79,7 @@ const ProjectCreateForm = ({ onCreated }) => {
         >
           <option value="active">active</option>
           <option value="on_hold">on_hold</option>
-          <option value="archived">archived</option>
+          <option value="completed">completed</option>
         </select>
 
         <input
