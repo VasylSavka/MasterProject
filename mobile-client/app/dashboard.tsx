@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,24 +12,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
 import { account } from "@/src/appwrite/client";
-import { createProject, getProjects } from "@/src/appwrite/database";
+import {
+  createProject,
+  getProjects,
+  getProjectsByTeam,
+} from "@/src/appwrite/database";
 import { showErrorToast, showSuccessToast } from "@/src/utils/toast";
 import { useRouter } from "expo-router";
-
-const getStatusColors = (status?: string) => {
-  switch (status) {
-    case "active":
-      return { backgroundColor: "#16a34a", textColor: "#fff" };
-    case "on_hold":
-      return { backgroundColor: "#ca8a04", textColor: "#fff" };
-    case "completed":
-    case "archived":
-    case "done":
-      return { backgroundColor: "#4b5563", textColor: "#fff" };
-    default:
-      return { backgroundColor: "#e5e7eb", textColor: "#111827" };
-  }
-};
+import StatusBadge from "@/components/common/StatusBadge";
+import { parseFlexibleDate } from "@/src/utils/date";
+import { listTeams } from "@/src/appwrite/teams";
 
 const DashboardScreen = () => {
   const router = useRouter();
@@ -50,21 +42,53 @@ const DashboardScreen = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
 
+  const loadProjects = useCallback(
+    async (uid: string) => {
+      setProjectsLoading(true);
+      try {
+        const [ownRes, teamsRes] = await Promise.all([
+          getProjects(uid).catch(() => ({ documents: [] })),
+          listTeams().catch(() => ({ teams: [] })),
+        ]);
+        const teamsList =
+          (teamsRes as any).teams || (teamsRes as any).documents || [];
+        const teamProjects = await Promise.all(
+          teamsList.map((team: any) =>
+            getProjectsByTeam(team.$id).catch(() => ({ documents: [] }))
+          )
+        );
+        const combined = [...(ownRes.documents || [])];
+        teamProjects.forEach((res) => {
+          if (res?.documents) combined.push(...res.documents);
+        });
+        const unique = Array.from(
+          combined
+            .reduce((map, project) => {
+              if (project?.$id) map.set(project.$id, project);
+              return map;
+            }, new Map<string, any>())
+            .values()
+        );
+        setProjects(unique);
+      } finally {
+        setProjectsLoading(false);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     (async () => {
       try {
         const u = await account.get();
         setUserId(u.$id);
-        setProjectsLoading(true);
-        const res = await getProjects(u.$id);
-        setProjects(res.documents || []);
+        await loadProjects(u.$id);
       } catch {
         setProjects([]);
-      } finally {
         setProjectsLoading(false);
       }
     })();
-  }, []);
+  }, [loadProjects]);
 
   useEffect(() => {
     let t: any;
@@ -121,32 +145,16 @@ const DashboardScreen = () => {
     if (!userId) return;
     setRefreshing(true);
     try {
-      setProjectsLoading(true);
-      const res = await getProjects(userId);
-      setProjects(res.documents || []);
+      await loadProjects(userId);
     } finally {
-      setProjectsLoading(false);
       setRefreshing(false);
     }
   };
 
-  const parseDate = (val: string | undefined) => {
-    if (!val) return null;
-    const trimmed = val.trim();
-    if (!trimmed) return null;
-    if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
-      const [dd, mm, yyyy] = trimmed.split(".").map((v) => parseInt(v, 10));
-      const d = new Date(yyyy, mm - 1, dd);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    const d = new Date(trimmed);
-    return isNaN(d.getTime()) ? null : d;
-  };
-
   const handleCreate = async () => {
     if (!userId || !name.trim()) return;
-    const s = parseDate(startDate) || new Date();
-    const e = parseDate(endDate);
+    const s = parseFlexibleDate(startDate) || new Date();
+    const e = parseFlexibleDate(endDate);
     const payload = {
       name: name.trim(),
       description: description.trim() || undefined,
@@ -318,29 +326,10 @@ const DashboardScreen = () => {
                 {project.description ? (
                   <Text>{project.description}</Text>
                 ) : null}
-                {(() => {
-                  const statusColors = getStatusColors(project.status);
-                  return (
-                    <View style={styles.statusRow}>
-                      <Text style={styles.statusLabel}>Статус:</Text>
-                      <View
-                        style={[
-                          styles.statusPill,
-                          { backgroundColor: statusColors.backgroundColor },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            { color: statusColors.textColor },
-                          ]}
-                        >
-                          {statusLabel}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })()}
+                <View style={styles.statusRow}>
+                  <Text style={styles.statusLabel}>Статус:</Text>
+                  <StatusBadge status={project.status} label={statusLabel} />
+                </View>
                 <Text>
                   Початок: {start} | Кінець: {end}
                 </Text>
@@ -399,16 +388,6 @@ const styles = {
   },
   statusLabel: {
     color: "#4b5563",
-  },
-  statusPill: {
-    backgroundColor: "#e5e7eb",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  statusText: {
-    color: "#111827",
-    fontWeight: "600",
   },
 };
 
