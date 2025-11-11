@@ -45,79 +45,84 @@ const TeamsScreen = () => {
   const [membersByTeam, setMembersByTeam] = useState<Record<string, any[]>>(
     {}
   );
-  const [loading, setLoading] = useState<boolean>(true);
-  const [showTeamsLoader, setShowTeamsLoader] = useState<boolean>(false);
+  const [contentReady, setContentReady] = useState(false);
   const [usersIndex, setUsersIndex] = useState<
     Record<string, { name?: string; email?: string }>
   >({});
   const [currentUser, setCurrentUser] = useState<any>(null);
   const currentUserRef = useRef<any>(null);
 
-  const fetchAll = useCallback(async (userOverride?: any) => {
-    const effectiveUser = userOverride || currentUserRef.current;
-    if (!effectiveUser) return;
+  const fetchAll = useCallback(
+    async (options?: { userOverride?: any; keepContent?: boolean }) => {
+      const effectiveUser = options?.userOverride || currentUserRef.current;
+      if (!effectiveUser) return;
+      if (!options?.keepContent) setContentReady(false);
 
-    try {
-      const [projRes, teamRes, usersMap] = await Promise.all([
-        getProjects(effectiveUser.$id).catch(() => ({ documents: [] })),
-        listTeams().catch(() => ({ teams: [] })),
-        listUsersMap().catch(() => ({})),
-      ]);
+      try {
+        const [projRes, teamRes, usersMap] = await Promise.all([
+          getProjects(effectiveUser.$id).catch(() => ({ documents: [] })),
+          listTeams().catch(() => ({ teams: [] })),
+          listUsersMap().catch(() => ({})),
+        ]);
 
-      const teamsList =
-        (teamRes as any).teams || (teamRes as any).documents || [];
-      setTeamsData(teamsList);
+        const teamsList =
+          (teamRes as any).teams || (teamRes as any).documents || [];
+        setTeamsData(teamsList);
 
-      const safeUsersMap =
-        usersMap && typeof usersMap === "object" ? usersMap : {};
-      setUsersIndex(safeUsersMap);
+        const safeUsersMap =
+          usersMap && typeof usersMap === "object" ? usersMap : {};
+        setUsersIndex(safeUsersMap);
 
-      const membersEntries = await Promise.all(
-        teamsList.map(async (team: any) => {
-          try {
-            const res = await getTeamMembers(team.$id);
-            const rich = await enrichMemberships(
-              res.memberships || [],
-              effectiveUser,
-              safeUsersMap
-            );
-            return [team.$id, rich] as const;
-          } catch {
-            return [team.$id, []] as const;
-          }
-        })
-      );
-      setMembersByTeam(Object.fromEntries(membersEntries));
+        const membersEntries = await Promise.all(
+          teamsList.map(async (team: any) => {
+            try {
+              const res = await getTeamMembers(team.$id);
+              const rich = await enrichMemberships(
+                res.memberships || [],
+                effectiveUser,
+                safeUsersMap
+              );
+              return [team.$id, rich] as const;
+            } catch {
+              return [team.$id, []] as const;
+            }
+          })
+        );
+        setMembersByTeam(Object.fromEntries(membersEntries));
 
-      const teamProjects = await Promise.all(
-        teamsList.map((team: any) =>
-          getProjectsByTeam(team.$id).catch(() => ({ documents: [] }))
-        )
-      );
+        const teamProjects = await Promise.all(
+          teamsList.map((team: any) =>
+            getProjectsByTeam(team.$id).catch(() => ({ documents: [] }))
+          )
+        );
 
-      const combined = [...(projRes.documents || [])];
-      teamProjects.forEach((res) => {
-        if (res?.documents) combined.push(...res.documents);
-      });
+        const combined = [...(projRes.documents || [])];
+        teamProjects.forEach((res) => {
+          if (res?.documents) combined.push(...res.documents);
+        });
 
-      const uniqueProjects = Array.from(
-        combined
-          .reduce((acc: Map<string, any>, project: any) => {
-            if (project?.$id) acc.set(project.$id, project);
-            return acc;
-          }, new Map<string, any>())
-          .values()
-      );
+        const uniqueProjects = Array.from(
+          combined
+            .reduce((acc: Map<string, any>, project: any) => {
+              if (project?.$id) acc.set(project.$id, project);
+              return acc;
+            }, new Map<string, any>())
+            .values()
+        );
 
-      setProjects(uniqueProjects);
-    } catch (error: any) {
-      console.warn("Failed to load teams data", error?.message || error);
-      setProjects([]);
-      setTeamsData([]);
-      setMembersByTeam({});
-      setUsersIndex({});
-    }
-  }, []);
+        setProjects(uniqueProjects);
+      } catch (error: any) {
+        console.warn("Failed to load teams data", error?.message || error);
+        setProjects([]);
+        setTeamsData([]);
+        setMembersByTeam({});
+        setUsersIndex({});
+      } finally {
+        setContentReady(true);
+      }
+    },
+    []
+  );
 
   const refreshTeamMembers = useCallback(
     async (teamId: string) => {
@@ -140,40 +145,29 @@ const TeamsScreen = () => {
 
   useEffect(() => {
     let isMounted = true;
-    setLoading(true);
+    setContentReady(false);
     (async () => {
       try {
         const user = await account.get();
         if (!isMounted) return;
         currentUserRef.current = user;
         setCurrentUser(user);
-        await fetchAll(user);
+        await fetchAll({ userOverride: user });
       } catch (error: any) {
         if (!isMounted) return;
         console.warn("Failed to fetch account data", error?.message || error);
         setProjects([]);
         setTeamsData([]);
         setMembersByTeam({});
+        setUsersIndex({});
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) setContentReady(true);
       }
     })();
     return () => {
       isMounted = false;
     };
   }, [fetchAll]);
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    if (loading) {
-      timer = setTimeout(() => setShowTeamsLoader(true), 150);
-    } else {
-      setShowTeamsLoader(false);
-    }
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [loading]);
 
   const formatMemberName = useCallback(
     (member: any) => {
@@ -223,7 +217,7 @@ const TeamsScreen = () => {
     if (!currentUserRef.current) return;
     setRefreshing(true);
     try {
-      await fetchAll();
+      await fetchAll({ keepContent: true });
     } finally {
       setRefreshing(false);
     }
@@ -238,13 +232,10 @@ const TeamsScreen = () => {
       await updateProject(project.$id, { teamId: (team as any).$id });
       setSelectedProject(null);
       setExpandedTeam((team as any).$id);
-      setLoading(true);
       await fetchAll();
     } catch (error: any) {
       console.warn("Create team failed", error?.message || error);
       Alert.alert("Помилка створення команди", error?.message || "Не вдалося створити команду. Спробуйте ще раз.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -300,8 +291,8 @@ const TeamsScreen = () => {
       >
         <View style={styles.card}>
           <Text style={styles.title}>Створити команду для проєкту</Text>
-          {showTeamsLoader ? (
-            <View style={{ paddingVertical: 12, minHeight: 120, justifyContent: "center" }}>
+          {!contentReady ? (
+            <View style={styles.loaderContainer}>
               <ActivityIndicator size="small" color="#f89c1c" />
             </View>
           ) : projectsWithoutTeam.length === 0 ? (
@@ -332,9 +323,9 @@ const TeamsScreen = () => {
         </View>
 
         <Text style={[styles.title, { marginTop: 12 }]}>Ваші команди</Text>
-        {showTeamsLoader ? (
-          <View style={{ paddingVertical: 16 }}>
-            <ActivityIndicator size="small" color="#f89c1c" />
+        {!contentReady ? (
+          <View style={styles.fullLoader}>
+            <ActivityIndicator size="large" color="#f89c1c" />
           </View>
         ) : teamsToRender.length === 0 ? (
           <Text style={styles.mutedTextCenter}>
@@ -486,6 +477,16 @@ const styles = {
     borderRadius: 8,
     alignItems: "center",
     alignSelf: "flex-end",
+  },
+  loaderContainer: {
+    paddingVertical: 16,
+    minHeight: 96,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullLoader: {
+    paddingVertical: 24,
+    alignItems: "center",
   },
   manageButtonText: {
     color: "#fff",
