@@ -18,8 +18,11 @@ export default function Login() {
 
   const handleLogin = async () => {
     try {
-      await account.createEmailSession(email, password);
-      router.replace("/");
+      const fn: any =
+        (account as any).createEmailPasswordSession ||
+        (account as any).createEmailSession;
+      await fn.call(account, email, password);
+      router.replace("/dashboard");
     } catch (error) {
       Alert.alert("Помилка авторизації", "Невірна пошта або пароль");
     }

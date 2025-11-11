@@ -21,8 +21,11 @@ export default function Register() {
   const handleRegister = async () => {
     try {
       await account.create(ID.unique(), email, password, name);
-      await account.createEmailSession(email, password);
-      router.replace("/");
+      const fn: any =
+        (account as any).createEmailPasswordSession ||
+        (account as any).createEmailSession;
+      await fn.call(account, email, password);
+      router.replace("/dashboard");
     } catch (error) {
       Alert.alert("Помилка реєстрації", "Спробуйте ще раз або змініть дані");
     }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,12 @@ import {
   ScrollView,
   Image,
   RefreshControl,
-  SafeAreaView,
+  ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
+import { account } from "@/src/appwrite/client";
+import { createProject, getProjects } from "@/src/appwrite/database";
 
 const DashboardScreen = () => {
   const [name, setName] = useState("");
@@ -21,52 +24,143 @@ const DashboardScreen = () => {
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
   const [refreshing, setRefreshing] = useState(false);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [showListLoader, setShowListLoader] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searching, setSearching] = useState(false);
 
-  const user = {
-    name: "Vasyl",
-    avatar: require("../assets/images/avatar.png"),
+  const [userId, setUserId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<any[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const u = await account.get();
+        setUserId(u.$id);
+        setProjectsLoading(true);
+        const res = await getProjects(u.$id);
+        setProjects(res.documents || []);
+      } catch {
+        setProjects([]);
+      } finally {
+        setProjectsLoading(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    let t: any;
+    if (projectsLoading) {
+      t = setTimeout(() => setShowListLoader(true), 150);
+    } else {
+      setShowListLoader(false);
+    }
+    return () => t && clearTimeout(t);
+  }, [projectsLoading]);
+
+  useEffect(() => {
+    setSearching(true);
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setSearching(false);
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const filteredProjects = useMemo(() => {
+    const items = Array.isArray(projects) ? projects : [];
+    const prepared = items
+      .filter((p) => {
+        const n = (p.name || "").toLowerCase();
+        const d = (p.description || "").toLowerCase();
+        return (
+          n.includes(debouncedSearch.toLowerCase()) ||
+          d.includes(debouncedSearch.toLowerCase())
+        );
+      })
+      .filter((p) => {
+        const mapFilter = (val: string) =>
+          val === "on hold" ? "on_hold" : val === "done" ? "archived" : val;
+        return (
+          filterStatus === "all" || (p.status || "") === mapFilter(filterStatus)
+        );
+      })
+      .sort((a: any, b: any) => {
+        const aid = a.$createdAt || a.$id || 0;
+        const bid = b.$createdAt || b.$id || 0;
+        return sortOrder === "newest"
+          ? aid < bid
+            ? 1
+            : -1
+          : aid > bid
+          ? 1
+          : -1;
+      });
+    return prepared;
+  }, [projects, debouncedSearch, filterStatus, sortOrder]);
+
+  const onRefresh = async () => {
+    if (!userId) return;
+    setRefreshing(true);
+    try {
+      setProjectsLoading(true);
+      const res = await getProjects(userId);
+      setProjects(res.documents || []);
+    } finally {
+      setProjectsLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  const projects = [
-    {
-      id: 1,
-      name: "Radeon",
-      description: "new videocards",
-      status: "active",
-      start: "06.11.2025",
-      end: null,
-    },
-    {
-      id: 2,
-      name: "Nvidia",
-      description: "new videocard",
-      status: "on hold",
-      start: "05.11.2025",
-      end: null,
-    },
-  ];
+  const parseDate = (val: string | undefined) => {
+    if (!val) return null;
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
+      const [dd, mm, yyyy] = trimmed.split(".").map((v) => parseInt(v, 10));
+      const d = new Date(yyyy, mm - 1, dd);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? null : d;
+  };
 
-  const filteredProjects = projects
-    .filter(
-      (p) =>
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.description.toLowerCase().includes(search.toLowerCase())
-    )
-    .filter((p) => filterStatus === "all" || p.status === filterStatus)
-    .sort((a, b) => (sortOrder === "newest" ? b.id - a.id : a.id - b.id));
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000); // Заміни на реальний fetch
+  const handleCreate = async () => {
+    if (!userId || !name.trim()) return;
+    const s = parseDate(startDate) || new Date();
+    const e = parseDate(endDate);
+    const payload = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      status:
+        status === "on hold"
+          ? "on_hold"
+          : status === "done"
+          ? "archived"
+          : status,
+      startDate: s.toISOString(),
+      endDate: e ? e.toISOString() : undefined,
+      managerId: userId,
+    } as any;
+    try {
+      await createProject(payload);
+      setName("");
+      setDescription("");
+      setStatus("active");
+      setStartDate("");
+      setEndDate("");
+      await onRefresh();
+    } catch (e) {}
   };
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: "#F9DEAE" }}
+      edges={["top"]}
+    >
       <Image
         source={require("../assets/images/hero-login.png")}
-        style={{ position: "absolute", width: "100%", height: "100%" }}
+        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
         resizeMode="cover"
       />
 
@@ -76,7 +170,6 @@ const DashboardScreen = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Форма створення нового проекту */}
         <View style={styles.card}>
           <Text style={styles.title}>Створити новий проект</Text>
 
@@ -104,7 +197,6 @@ const DashboardScreen = () => {
             <Picker.Item label="done" value="done" />
           </Picker>
 
-          {/* Початок і кінець на новому рядку */}
           <View
             style={{
               flexDirection: "row",
@@ -126,7 +218,7 @@ const DashboardScreen = () => {
             />
           </View>
 
-          <TouchableOpacity style={styles.button}>
+          <TouchableOpacity style={styles.button} onPress={handleCreate}>
             <Text style={{ color: "#fff", fontWeight: "bold" }}>
               Додати проект
             </Text>
@@ -172,17 +264,40 @@ const DashboardScreen = () => {
           </View>
         </View>
 
-        {/* Список проектів */}
-        {filteredProjects.map((project) => (
-          <TouchableOpacity key={project.id} style={styles.card}>
-            <Text style={styles.cardTitle}>{project.name}</Text>
-            <Text>{project.description}</Text>
-            <Text>Статус: {project.status}</Text>
-            <Text>
-              Початок: {project.start} | Кінець: {project.end || "—"}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {showListLoader || searching ? (
+          <View style={{ paddingVertical: 16 }}>
+            <ActivityIndicator size="small" color="#f89c1c" />
+          </View>
+        ) : filteredProjects.length === 0 ? (
+          <Text style={{ color: "#1f2937" }}>Проєктів не знайдено</Text>
+        ) : (
+          filteredProjects.map((project: any) => {
+            const statusLabel =
+              project.status === "on_hold"
+                ? "on hold"
+                : project.status === "archived"
+                ? "done"
+                : project.status;
+            const start = project.startDate
+              ? new Date(project.startDate).toLocaleDateString()
+              : "—";
+            const end = project.endDate
+              ? new Date(project.endDate).toLocaleDateString()
+              : "—";
+            return (
+              <TouchableOpacity key={project.$id} style={styles.card}>
+                <Text style={styles.cardTitle}>{project.name}</Text>
+                {project.description ? (
+                  <Text>{project.description}</Text>
+                ) : null}
+                <Text>Статус: {statusLabel}</Text>
+                <Text>
+                  Початок: {start} | Кінець: {end}
+                </Text>
+              </TouchableOpacity>
+            );
+          })
+        )}
       </ScrollView>
     </SafeAreaView>
   );

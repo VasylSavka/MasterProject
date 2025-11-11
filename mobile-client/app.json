@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "taskFlow1",
-    "slug": "taskFlow1",
+    "name": "taskFlowmobile",
+    "slug": "taskFlowmobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "taskflow1",
+    "scheme": "tasckflowmobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
