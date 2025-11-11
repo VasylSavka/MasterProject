@@ -2,6 +2,7 @@ import { Slot, useRouter, useSegments, usePathname } from "expo-router";
 import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
+import Toast from "react-native-toast-message";
 import { account } from "@/src/appwrite/client";
 
 export default function Layout() {
@@ -91,6 +92,7 @@ export default function Layout() {
           </TouchableOpacity>
         </View>
       )}
+      <Toast position="bottom" />
     </View>
   );
 }

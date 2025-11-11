@@ -34,6 +34,7 @@ import {
   listUsersMap,
 } from "@/src/appwrite/teams";
 import { useRouter } from "expo-router";
+import { showErrorToast, showSuccessToast } from "@/src/utils/toast";
 
 const TeamsScreen = () => {
   const router = useRouter();
@@ -235,9 +236,13 @@ const TeamsScreen = () => {
       setSelectedProject(null);
       setExpandedTeam((team as any).$id);
       await fetchAll();
+      showSuccessToast("Команду створено", project.name);
     } catch (error: any) {
       console.warn("Create team failed", error?.message || error);
-      Alert.alert("Помилка створення команди", error?.message || "Не вдалося створити команду. Спробуйте ще раз.");
+      showErrorToast(
+        "Не вдалося створити команду",
+        error?.message || "Спробуйте ще раз"
+      );
     }
   };
 
@@ -249,11 +254,12 @@ const TeamsScreen = () => {
       setInviteEmail("");
       await refreshTeamMembers(teamId);
       setExpandedTeam(teamId);
+      showSuccessToast("Запрошення надіслано");
     } catch (error: any) {
       console.warn("Invite failed", error?.message || error);
-      Alert.alert(
-        "Помилка запрошення",
-        error?.message || "Не вдалося запросити учасника. Перевірте email і спробуйте ще раз."
+      showErrorToast(
+        "Не вдалося запросити учасника",
+        error?.message || "Перевірте email і спробуйте ще раз"
       );
     } finally {
       setInvitingTeamId(null);
@@ -272,9 +278,13 @@ const TeamsScreen = () => {
       await removeMember(teamId, membershipId);
       await refreshTeamMembers(teamId);
       setExpandedTeam(teamId);
+      showSuccessToast("Учасника видалено");
     } catch (error: any) {
       console.warn("Remove member failed", error?.message || error);
-      Alert.alert("Помилка видалення", error?.message || "Не вдалося видалити учасника.");
+      showErrorToast(
+        "Не вдалося видалити учасника",
+        error?.message || "Спробуйте ще раз"
+      );
     }
   };
 

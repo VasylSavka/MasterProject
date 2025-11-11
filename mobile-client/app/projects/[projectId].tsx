@@ -39,7 +39,9 @@ import {
   getTeamMembers,
   inviteMember,
   enrichMemberships,
+  removeMember,
 } from "@/src/appwrite/teams";
+import { showErrorToast, showSuccessToast } from "@/src/utils/toast";
 
 const emptyTask = {
   title: "",
@@ -100,6 +102,7 @@ const ProjectDetailScreen = () => {
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamInviteEmail, setTeamInviteEmail] = useState("");
   const [teamAction, setTeamAction] = useState<"create" | "invite" | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -291,8 +294,12 @@ const ProjectDetailScreen = () => {
     try {
       await updateProject(project.$id, { status: nextStatus });
       setProject((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+      showSuccessToast("Статус змінено", `Новий статус: ${nextStatus}`);
     } catch (error: any) {
-      Alert.alert("Помилка", error?.message || "Не вдалося змінити статус проєкту");
+      showErrorToast(
+        "Не вдалося змінити статус",
+        error?.message || "Спробуйте ще раз"
+      );
     } finally {
       setStatusSaving(false);
       setStatusEditing(false);
@@ -313,9 +320,13 @@ const ProjectDetailScreen = () => {
             setDeletingProject(true);
             try {
               await deleteProjectApi(project.$id);
+              showSuccessToast("Проєкт видалено");
               router.replace("/dashboard");
             } catch (error: any) {
-              Alert.alert("Помилка", error?.message || "Не вдалося видалити проєкт");
+              showErrorToast(
+                "Не вдалося видалити проєкт",
+                error?.message || "Спробуйте ще раз"
+              );
             } finally {
               setDeletingProject(false);
             }
@@ -343,8 +354,12 @@ const ProjectDetailScreen = () => {
       });
       setNewTask({ ...emptyTask });
       await loadTasks(project.$id);
+      showSuccessToast("Завдання створено", newTask.title || undefined);
     } catch (error: any) {
-      Alert.alert("Помилка", error?.message || "Не вдалося створити завдання");
+      showErrorToast(
+        "Не вдалося створити завдання",
+        error?.message || "Спробуйте ще раз"
+      );
     } finally {
       setTaskSubmitting(false);
     }
@@ -377,8 +392,12 @@ const ProjectDetailScreen = () => {
       await loadTasks(project.$id);
       setEditingTaskId(null);
       setEditingTask({ ...emptyTask });
+      showSuccessToast("Завдання оновлено");
     } catch (error: any) {
-      Alert.alert("Помилка", error?.message || "Не вдалося оновити завдання");
+      showErrorToast(
+        "Не вдалося оновити завдання",
+        error?.message || "Спробуйте ще раз"
+      );
     } finally {
       setTaskUpdating(false);
     }
@@ -399,8 +418,12 @@ const ProjectDetailScreen = () => {
             try {
               await deleteTaskApi(taskId);
               await loadTasks(project.$id!);
+              showSuccessToast("Завдання видалено");
             } catch (error: any) {
-              Alert.alert("Помилка", error?.message || "Не вдалося видалити завдання");
+              showErrorToast(
+                "Не вдалося видалити завдання",
+                error?.message || "Спробуйте ще раз"
+              );
             } finally {
               setTaskDeletingId(null);
             }
@@ -421,8 +444,12 @@ const ProjectDetailScreen = () => {
         prev ? { ...prev, teamId: (team as any).$id } : prev
       );
       await loadTeamMembers((team as any).$id);
+      showSuccessToast("Команду створено");
     } catch (error: any) {
-      Alert.alert("Помилка", error?.message || "Не вдалося створити команду");
+      showErrorToast(
+        "Не вдалося створити команду",
+        error?.message || "Спробуйте ще раз"
+      );
     } finally {
       setTeamAction(null);
     }
@@ -435,10 +462,31 @@ const ProjectDetailScreen = () => {
       await inviteMember(project.teamId, teamInviteEmail.trim(), ["member"]);
       setTeamInviteEmail("");
       await loadTeamMembers(project.teamId);
+      showSuccessToast("Запрошення надіслано");
     } catch (error: any) {
-      Alert.alert("Помилка", error?.message || "Не вдалося надіслати запрошення");
+      showErrorToast(
+        "Не вдалося запросити учасника",
+        error?.message || "Перевірте email та спробуйте ще раз"
+      );
     } finally {
       setTeamAction(null);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string, isOwner: boolean) => {
+    if (!project?.teamId || isOwner) return;
+    setRemovingMemberId(memberId);
+    try {
+      await removeMember(project.teamId, memberId);
+      await loadTeamMembers(project.teamId);
+      showSuccessToast("Учасника видалено");
+    } catch (error: any) {
+      showErrorToast(
+        "Не вдалося видалити учасника",
+        error?.message || "Спробуйте ще раз"
+      );
+    } finally {
+      setRemovingMemberId(null);
     }
   };
 
@@ -832,11 +880,28 @@ const ProjectDetailScreen = () => {
               ) : teamMembers.length === 0 ? (
                 <Text style={styles.mutedText}>Ще немає учасників.</Text>
               ) : (
-                teamMembers.map((member) => (
-                  <View key={member.$id} style={styles.memberRow}>
-                    <Text style={styles.memberName}>{formatMemberName(member)}</Text>
-                  </View>
-                ))
+                teamMembers.map((member) => {
+                  const isOwner = (member.roles || []).includes("owner");
+                  const removing = removingMemberId === member.$id;
+                  return (
+                    <View key={member.$id} style={styles.memberRow}>
+                      <Text style={styles.memberName}>{formatMemberName(member)}</Text>
+                      {!isOwner && (
+                        <TouchableOpacity
+                          style={[styles.redButton, styles.memberButton]}
+                          onPress={() => handleRemoveMember(member.$id, isOwner)}
+                          disabled={removing}
+                        >
+                          {removing ? (
+                            <ActivityIndicator color="#fff" />
+                          ) : (
+                            <Text style={styles.buttonText}>Видалити</Text>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })
               )}
             </>
           )}
@@ -951,9 +1016,17 @@ const styles = {
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
   },
   memberName: {
     color: "#1f2937",
+  },
+  memberButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
 };
 

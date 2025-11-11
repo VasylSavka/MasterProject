@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
 import { account } from "@/src/appwrite/client";
 import { createProject, getProjects } from "@/src/appwrite/database";
+import { showErrorToast, showSuccessToast } from "@/src/utils/toast";
 import { useRouter } from "expo-router";
 
 const getStatusColors = (status?: string) => {
@@ -167,7 +168,13 @@ const DashboardScreen = () => {
       setStartDate("");
       setEndDate("");
       await onRefresh();
-    } catch (e) {}
+      showSuccessToast("Проєкт створено", `${payload.name} додано до списку`);
+    } catch (error: any) {
+      showErrorToast(
+        "Не вдалося створити проєкт",
+        error?.message || "Перевірте дані та спробуйте ще раз"
+      );
+    }
   };
 
   return (
